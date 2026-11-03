@@ -46,6 +46,11 @@
   #avviso.ok { background:#1a7f37; } #avviso.err { background:#cf222e; }
   #avviso .x { margin-left:auto; opacity:.8; font-size:18px; line-height:1; }
   .campo-errore { outline:3px solid var(--bad) !important; outline-offset:3px; border-radius:10px; animation:scuoti .4s; }
+  /* finestra "e adesso?" dopo la registrazione */
+  #dopo { position:fixed; inset:0; z-index:60; background:#0008; display:flex; align-items:flex-end; justify-content:center; padding:16px; padding-bottom:calc(16px + env(safe-area-inset-bottom)); }
+  #dopo .card { width:100%; max-width:528px; margin:0; animation:sali .2s; }
+  #dopo button { width:100%; margin-top:10px; }
+  @keyframes sali { from { transform:translateY(30px); opacity:0; } }
   @keyframes scuoti { 25% { transform:translateX(-6px); } 50% { transform:translateX(6px); } 75% { transform:translateX(-3px); } }
   .codes { font-family:ui-monospace, Menlo, monospace; font-size:15px; }
   video { width:100%; border-radius:12px; background:#000; aspect-ratio:1; object-fit:cover; }
@@ -162,6 +167,14 @@
 </main>
 
 <div id="avviso" role="alert"></div>
+<div id="dopo" class="hidden"><div class="card">
+  <div style="font-size:18px;font-weight:700">✅ <span id="dopo-cosa"></span></div>
+  <div class="codes" id="dopo-codici" style="margin-top:6px"></div>
+  <div class="mut" id="dopo-stampa" style="margin-top:4px"></div>
+  <div style="margin-top:14px;font-weight:600">Vuoi registrare un'altra bobina?</div>
+  <button class="pri" id="dopo-si">➕ Sì, una nuova</button>
+  <button id="dopo-no">📦 No, vai al magazzino</button>
+</div></div>
 <nav id="nav" class="hidden">
   <button data-v="nuove"><span>➕</span>Nuove</button>
   <button data-v="scan"><span>📷</span>Scansiona</button>
@@ -325,6 +338,19 @@ function drawChips() {
   $('n-mat-altro').classList.toggle('hidden', materiale !== 'Altro');
 }
 $('n-mat').onclick = e => { if (e.target.dataset.m) { materiale = e.target.dataset.m; drawChips(); } };
+// rimette il modulo come nuovo
+function azzeraModulo() {
+  materiale = 'PLA'; $('n-mat-altro').value = ''; drawChips();
+  colore = null; $('n-col-altro').value = ''; drawColori(); $('n-col-sel').textContent = '';
+  $('n-foto-box').classList.add('hidden'); $('n-foto').value = '';
+  $('n-qta').value = 1;
+  for (const id of ['n-marca', 'n-prezzo', 'n-pos', 'n-rimasti', 'n-usati']) $(id).value = '';
+  $('n-diam').value = '1.75';
+  finitura = null; drawFin('n-fin', finitura);
+  $('v-nuove').querySelector('details').open = false;
+}
+$('dopo-si').onclick = () => { $('dopo').classList.add('hidden'); azzeraModulo(); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+$('dopo-no').onclick = () => { $('dopo').classList.add('hidden'); azzeraModulo(); show('mag'); };
 $('n-meno').onclick = () => $('n-qta').value = Math.max(1, (+$('n-qta').value || 1) - 1);
 $('n-piu').onclick = () => $('n-qta').value = (+$('n-qta').value || 0) + 1;
 
@@ -463,11 +489,13 @@ $('n-salva').onclick = async () => {
   $('n-salva').disabled = false;
   if (error) return msg('Errore nel salvataggio: ' + esc(error.message), false);
   const cosa = `${data.length} ${data.length === 1 ? 'bobina' : 'bobine'} ${esc(mat)} ${esc(colore)}${finitura ? ' ' + finitura.toLowerCase() : ''}`;
-  msg(`Registrate ${cosa}.`);
+  const codici = data.map(r => r.id).join(' · '), stampa = MAC ? 'Premi 🖨 Stampa QR in alto per stamparli.' : 'Stampa i QR dal Mac con 🖨 Stampa QR.';
   // riepilogo con i codici: resta in alto finché non cambi scheda
-  $('msg').innerHTML = `<div class="msg ok">Registrate ${cosa}.<br><span class="codes">${data.map(r => r.id).join(' · ')}</span><br>${MAC ? 'Premi 🖨 Stampa QR in alto per stamparli.' : 'Stampa i QR dal Mac con 🖨 Stampa QR.'}</div>`;
-  $('n-rimasti').value = ''; $('n-usati').value = '';
-  colore = null; $('n-col-altro').value = ''; drawColori(); $('n-col-sel').textContent = ''; $('n-foto-box').classList.add('hidden'); $('n-qta').value = 1;
+  $('msg').innerHTML = `<div class="msg ok">Registrate ${cosa}.<br><span class="codes">${codici}</span><br>${stampa}</div>`;
+  // finestra: un'altra bobina oppure magazzino
+  $('dopo-cosa').innerHTML = `Registrate ${cosa}`; $('dopo-codici').textContent = codici; $('dopo-stampa').textContent = stampa;
+  $('dopo').classList.remove('hidden');
+  navigator.vibrate?.(30);
   loadSuggest();
 };
 
