@@ -113,8 +113,8 @@
       <div id="n-foto-box" class="hidden"><canvas id="n-canvas"></canvas><div class="mut" style="margin-top:6px">Tocca il filamento nella foto per correggere il colore.</div></div>
       <label>Quante bobine</label>
       <div class="row stepper"><button id="n-meno">−</button><input id="n-qta" type="number" inputmode="numeric" value="1" min="1"><button id="n-piu">+</button></div>
-      <details>
-        <summary>Altri dati (facoltativi)</summary>
+      <div id="n-altri">
+        <div style="margin-top:20px;padding-top:12px;border-top:1px solid var(--line);font-weight:600">Altri dati <span class="mut" style="font-weight:400">(facoltativi)</span></div>
         <div class="grid2">
           <div><label>Marca</label><input id="n-marca" autocomplete="off" placeholder="tocca per scegliere"></div>
           <div><label>Prezzo € / bobina</label><input id="n-prezzo" type="number" inputmode="decimal" step="0.01"></div>
@@ -129,7 +129,7 @@
           <input id="n-usati" type="number" inputmode="numeric" placeholder="oppure g usati">
         </div>
         <div class="mut" style="font-size:12px;margin-top:4px">Lascia vuoto se è nuova e sigillata.</div>
-      </details>
+      </div>
       <button class="pri" id="n-salva">Registra e stampa QR</button>
     </div>
   </section>
@@ -380,7 +380,6 @@ function azzeraModulo() {
   for (const id of ['n-marca', 'n-prezzo', 'n-pos', 'n-rimasti', 'n-usati']) $(id).value = '';
   $('n-diam').value = '1.75';
   finitura = null; drawFin('n-fin', finitura);
-  $('v-nuove').querySelector('details').open = false;
 }
 $('dopo-si').onclick = () => { $('dopo').classList.add('hidden'); azzeraModulo(); window.scrollTo({ top: 0, behavior: 'smooth' }); };
 $('dopo-no').onclick = () => { $('dopo').classList.add('hidden'); azzeraModulo(); show('mag'); };
