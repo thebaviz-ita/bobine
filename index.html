@@ -105,6 +105,8 @@
           <div><label>Diametro mm</label><input id="n-diam" type="number" inputmode="decimal" step="0.01" value="1.75"></div>
           <div><label>Posizione</label><input id="n-pos" autocomplete="off" placeholder="tocca per scegliere"></div>
         </div>
+        <label>Finitura</label>
+        <div class="chips" id="n-fin"></div>
       </details>
       <button class="pri" id="n-salva">Registra e stampa QR</button>
     </div>
@@ -162,6 +164,9 @@ const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const $ = id => document.getElementById(id);
 const SUG = { marca: [], posizione: [], colore: [], tuttiColori: [], caricati: false };   // marche e posizioni già usate
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const FINITURE = ['Opaco', 'Lucido'];
+let finitura = null;   // facoltativa: si tocca di nuovo per toglierla
+const drawFin = (box, scelta) => { $(box).innerHTML = FINITURE.map(f => `<button type="button" class="chip ${f === scelta ? 'on' : ''}" data-f="${f}">${f}</button>`).join(''); };
 let materiale = 'PLA', colore = null, stream = null, scanning = false;
 const MAC = /Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints < 2;
 const COLORI = [['Nero', '#1c1c1c'], ['Bianco', '#f4f4f2'], ['Grigio', '#7d7f82'], ['Argento', '#b9bdc3'],
@@ -409,12 +414,13 @@ $('n-salva').onclick = async () => {
     prezzo: num($('n-prezzo').value),
     diametro: num($('n-diam').value) ?? 1.75,
     posizione: $('n-pos').value.trim() || null,
+    finitura,
   };
   $('n-salva').disabled = true;
   const { data, error } = await db.from('bobine').insert(Array.from({ length: qta }, () => ({ ...riga }))).select('id');
   $('n-salva').disabled = false;
   if (error) return msg('Errore nel salvataggio: ' + esc(error.message), false);
-  msg(`Registrate ${data.length} bobine ${esc(mat)} ${esc(colore)}.<br><span class="codes">${data.map(r => r.id).join(' · ')}</span><br>${MAC ? 'Premi 🖨 Stampa QR in alto per stamparli.' : 'Stampa i QR dal Mac con 🖨 Stampa QR.'}`);
+  msg(`Registrate ${data.length} bobine ${esc(mat)} ${esc(colore)}${finitura ? ' ' + finitura.toLowerCase() : ''}.<br><span class="codes">${data.map(r => r.id).join(' · ')}</span><br>${MAC ? 'Premi 🖨 Stampa QR in alto per stamparli.' : 'Stampa i QR dal Mac con 🖨 Stampa QR.'}`);
   colore = null; $('n-col-altro').value = ''; drawColori(); $('n-col-sel').textContent = ''; $('n-foto-box').classList.add('hidden'); $('n-qta').value = 1;
   loadSuggest();
 };
@@ -501,7 +507,7 @@ async function openSpool(id) {
   det.classList.remove('hidden');
   det.innerHTML = `
     <div class="mut">${esc(b.id)}${b.stato === 'finita' ? ' · <b style="color:var(--bad)">FINITA</b>' : ''}</div>
-    <div class="big">${pallino(b.colore, 20)}${esc(b.materiale)} ${esc(b.colore)}</div>
+    <div class="big">${pallino(b.colore, 20)}${esc(b.materiale)} ${esc(b.colore)}${b.finitura ? ' <span style="font-size:18px">' + esc(b.finitura.toLowerCase()) + '</span>' : ''}</div>
     <div class="mut">${extra}</div>
     <div class="bar"><div style="width:${pct}%;background:${coloreBarra(pct)}"></div></div>
     <div><b>${b.peso_rimasto} g</b> rimasti su ${b.peso_iniziale} g (${pct}%)</div>
@@ -522,6 +528,8 @@ async function openSpool(id) {
 
     <label>Colore</label>
     <div class="row"><input id="d-col" value="${esc(b.colore)}" autocomplete="off"><button id="d-col-ok">Cambia</button></div>
+    <label>Finitura <span style="font-size:12px">(tocca per cambiarla, di nuovo per toglierla)</span></label>
+    <div class="chips" id="d-fin"></div>
 
     <label>Posizione</label>
     <input id="d-pos" value="${esc(b.posizione || '')}" placeholder="dove è riposta" autocomplete="off">
@@ -544,6 +552,8 @@ async function openSpool(id) {
     await openSpool(b.id); msg(testo);
   };
   const on = (id, f) => { if ($(id)) $(id).onclick = f; };
+  drawFin('d-fin', b.finitura);
+  $('d-fin').onclick = e => { const x = e.target.closest('[data-f]'); if (x) { const f = b.finitura === x.dataset.f ? null : x.dataset.f; upd({ finitura: f }, f ? `Finitura: ${f.toLowerCase()}.` : 'Finitura tolta.'); } };
   suggerisci('d-pos', 'posizione'); suggerisci('d-col', 'tuttiColori'); if (!SUG.caricati) loadSuggest();
   on('d-col-ok', () => {
     let c = $('d-col').value.trim(); if (!c) return msg('Scrivi il colore.', false);
@@ -572,7 +582,7 @@ async function openSpool(id) {
 // ---------- magazzino ----------
 $('m-finite').onchange = () => loadMag();
 async function loadMag() {
-  let q = db.from('bobine').select('id,materiale,colore,peso_rimasto,stato,aperta_il,usata_il,essiccata_il').order('materiale').order('colore');
+  let q = db.from('bobine').select('id,materiale,colore,finitura,peso_rimasto,stato,aperta_il,usata_il,essiccata_il').order('materiale').order('colore').order('finitura');
   if (!$('m-finite').checked) q = q.eq('stato', 'attiva');
   const { data, error } = await q;
   if (error) return msg('Errore: ' + esc(error.message), false);
@@ -580,12 +590,12 @@ async function loadMag() {
   $('m-tot').textContent = att.length;
   $('m-kg').textContent = (att.reduce((s, b) => s + b.peso_rimasto, 0) / 1000).toFixed(1);
   const groups = {};
-  for (const b of data) (groups[b.materiale] ??= {})[b.colore] ??= [];
-  for (const b of data) groups[b.materiale][b.colore].push(b);
+  const voce = b => b.colore + (b.finitura ? '|' + b.finitura : '');
+  for (const b of data) ((groups[b.materiale] ??= {})[voce(b)] ??= []).push(b);
   $('m-list').innerHTML = Object.keys(groups).length ? Object.entries(groups).map(([mat, cols]) => `
     <div style="font-weight:700;margin-top:8px">${esc(mat)}</div>
     ${Object.entries(cols).map(([col, list]) => `
-      <details><summary class="grp" style="color:inherit;margin:0"><span>${pallino(col)}${esc(col)}</span><span>${list.filter(b => b.stato === 'attiva').length} × · ${(list.reduce((s, b) => s + b.peso_rimasto, 0) / 1000).toFixed(2)} kg</span></summary>
+      <details><summary class="grp" style="color:inherit;margin:0"><span>${pallino(col.split('|')[0])}${esc(col.split('|')[0])}${col.includes('|') ? ' <span class="mut">' + esc(col.split('|')[1].toLowerCase()) + '</span>' : ''}</span><span>${list.filter(b => b.stato === 'attiva').length} × · ${(list.reduce((s, b) => s + b.peso_rimasto, 0) / 1000).toFixed(2)} kg</span></summary>
       ${list.map(b => `<div class="grp item mut" data-id="${b.id}"><span>${b.id}${b.stato === 'finita' ? ' (finita)' : ' ' + ({ ok: '✅', warn: '💧', mut: '🔒' })[asciutta(b).k]}</span><span>${b.peso_rimasto} g ›</span></div>`).join('')}
       </details>`).join('')}`).join('') : '<div class="mut">Nessuna bobina.</div>';
 }
@@ -594,6 +604,8 @@ $('m-list').onclick = e => { const it = e.target.closest('.item'); if (it) { sho
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => show(b.dataset.v));
 drawChips();
 drawColori();
+drawFin('n-fin', finitura);
+$('n-fin').onclick = e => { const b = e.target.closest('[data-f]'); if (b) { finitura = finitura === b.dataset.f ? null : b.dataset.f; drawFin('n-fin', finitura); } };
 boot();
 </script>
 </body>
