@@ -54,11 +54,12 @@
   #coda { position:fixed; inset:0; z-index:60; background:#0008; display:flex; align-items:flex-start; justify-content:center; padding:16px; overflow-y:auto; }
   #coda > .card { width:100%; max-width:620px; margin:0 0 16px; animation:sali .2s; }
   .foglio-box { display:flex; gap:14px; align-items:flex-start; padding:12px 0; border-top:1px solid var(--line); }
-  .foglio { flex:none; width:96px; aspect-ratio:2/3; background:#fff; border:1px solid #999; border-radius:4px; display:grid; grid-template-columns:1fr 1fr; padding:2px; gap:1px; }
-  .foglio div { border:1px dashed #bbb; display:flex; align-items:center; gap:2px; padding:1px; font:7px/1 ui-monospace, monospace; color:#000; overflow:hidden; }
+  .foglio { flex:none; width:96px; aspect-ratio:2/3; background:#fff; border:1px solid #999; border-radius:4px; padding:2px; }
+  .foglio .riga { display:grid; grid-template-columns:1fr 1fr; }
+  .foglio .riga div { border:1px dashed #bbb; display:flex; align-items:center; gap:2px; padding:1px; font:7px/1 ui-monospace, monospace; color:#000; overflow:hidden; }
   .foglio i { flex:none; background:repeating-conic-gradient(#000 0 25%, #fff 0 50%) 0 0/4px 4px; }
-  .foglio.norm i { width:16px; height:16px; } .foglio.picc i { width:6px; height:6px; }
-  .foglio.picc div { font-size:5px; }
+  .foglio .norm i { width:16px; height:16px; } .foglio .picc i { width:6px; height:6px; }
+  .foglio .picc div { font-size:5px; }
   .coda-righe { flex:1; min-width:0; }
   .coda-r { display:flex; align-items:center; gap:6px; padding:5px 0; font-size:14px; }
   .coda-r span { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -470,12 +471,21 @@ $('coda-invia').onclick = () => { $('coda').classList.add('hidden'); location.hr
 async function apriCoda() {
   const { data, error } = await db.from('bobine').select('id,materiale,colore,finitura,marca,stampa_piccola').eq('da_stampare', true).order('id');
   if (error) return msg('Errore: ' + esc(error.message), false);
-  // stessi fogli del programma di stampa: prima le normali (8 per foglio), poi le piccole (20 per foglio)
-  const fogli = [];
+  // stessi fogli del programma di stampa: righe da 2, prima le normali (alte 300 punti) poi le piccole (120),
+  // finché entrano nei 1200 punti del foglio 10x15: normali e piccole possono stare sullo stesso foglio
+  const righe = [];
   for (const piccola of [false, true]) {
-    const tipo = data.filter(b => !!b.stampa_piccola === piccola), n = piccola ? 20 : 8;
-    for (let i = 0; i < tipo.length; i += n) fogli.push({ piccola, bobine: tipo.slice(i, i + n) });
+    const tipo = data.filter(b => !!b.stampa_piccola === piccola);
+    for (let i = 0; i < tipo.length; i += 2) righe.push({ piccola, coppia: tipo.slice(i, i + 2) });
   }
+  const fogli = []; let h = 1200;
+  for (const r of righe) {
+    const a = r.piccola ? 120 : 300;
+    if (h + a > 1200) { fogli.push({ righe: [], bobine: [] }); h = 0; }
+    fogli.at(-1).righe.push(r); fogli.at(-1).bobine.push(...r.coppia); h += a;
+  }
+  const descr = f => { const n = f.bobine.filter(b => !b.stampa_piccola).length, p = f.bobine.length - n;
+    return [n && `${n} normal${n === 1 ? 'e' : 'i'}`, p && `${p} piccol${p === 1 ? 'a' : 'e'}`].filter(Boolean).join(' + '); };
   // stesse bobine (materiale+colore+finitura+marca) in coda più volte: probabile doppione
   const conta = {};
   const chiave = b => [b.materiale, b.colore, b.finitura, b.marca].join('|');
@@ -487,15 +497,16 @@ async function apriCoda() {
   $('coda-fogli').innerHTML = fogli.map((f, k) => `
     <div class="foglio-box">
       <div>
-        <div class="foglio ${f.piccola ? 'picc' : 'norm'}" style="grid-template-rows:repeat(${f.piccola ? 10 : 4}, 1fr)">
-          ${Array.from({ length: f.piccola ? 20 : 8 }, (_, i) => f.bobine[i] ? `<div><i></i>${esc(f.bobine[i].id)}</div>` : '<div></div>').join('')}
+        <div class="foglio">
+          ${f.righe.map(r => `<div class="riga ${r.piccola ? 'picc' : 'norm'}" style="height:${r.piccola ? 10 : 25}%">
+            ${[0, 1].map(j => r.coppia[j] ? `<div><i></i>${esc(r.coppia[j].id)}</div>` : '<div></div>').join('')}</div>`).join('')}
         </div>
-        <div class="mut" style="font-size:11px;text-align:center;margin-top:4px">Foglio ${k + 1}<br>${f.piccola ? 'piccole' : 'normali'} ${f.bobine.length}/${f.piccola ? 20 : 8}</div>
+        <div class="mut" style="font-size:11px;text-align:center;margin-top:4px;max-width:96px">Foglio ${k + 1}<br>${descr(f)}</div>
       </div>
       <div class="coda-righe">
         ${f.bobine.map(b => `<div class="coda-r">
           <span>${pallino(b.colore)}<b>${esc(b.id)}</b> ${nome(b)}${b.marca ? ' <span class="mut">· ' + esc(b.marca) + '</span>' : ''}${conta[chiave(b)] > 1 ? ' <b style="color:#e8890c" title="ci sono altre bobine uguali in coda">⚠︎</b>' : ''}</span>
-          <button data-formato="${esc(b.id)}" title="cambia formato">${f.piccola ? '→ normale' : '→ piccola'}</button>
+          <button data-formato="${esc(b.id)}" title="cambia formato">${b.stampa_piccola ? '→ normale' : '→ piccola'}</button>
           <button class="bad" data-togli="${esc(b.id)}" title="togli dalla coda">✕</button>
         </div>`).join('')}
       </div>
