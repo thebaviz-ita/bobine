@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1f6feb">
+<title>Bobine</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --txt:#1b1f24; --mut:#6b7280; --pri:#1f6feb; --ok:#1a7f37; --bad:#cf222e; --line:#e3e6ea; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0e1116; --card:#161b22; --txt:#e6edf3; --mut:#8b949e; --line:#30363d; } }
+  * { box-sizing:border-box; }
+  body { margin:0; font:16px/1.4 -apple-system, system-ui, Roboto, sans-serif; background:var(--bg); color:var(--txt); padding-bottom:84px; }
+  header { padding:14px 16px; font-weight:700; font-size:20px; display:flex; justify-content:space-between; align-items:center; }
+  header button { font-size:13px; padding:6px 10px; }
+  main { padding:0 16px; max-width:560px; margin:0 auto; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; margin-bottom:14px; }
+  label { display:block; font-size:13px; color:var(--mut); margin:12px 0 6px; }
+  input, select { width:100%; font-size:17px; padding:11px 12px; border:1px solid var(--line); border-radius:10px; background:var(--bg); color:var(--txt); }
+  button { font-size:16px; padding:12px 16px; border-radius:10px; border:1px solid var(--line); background:var(--card); color:var(--txt); cursor:pointer; }
+  button.pri { background:var(--pri); border-color:var(--pri); color:#fff; font-weight:600; width:100%; margin-top:16px; }
+  button.bad { color:var(--bad); }
+  .chips { display:flex; flex-wrap:wrap; gap:8px; }
+  .chip { padding:9px 14px; border-radius:999px; font-size:15px; }
+  .chip.on { background:var(--pri); border-color:var(--pri); color:#fff; }
+  .row { display:flex; gap:10px; align-items:center; }
+  .stepper button { width:52px; font-size:22px; padding:8px; }
+  .stepper input { text-align:center; font-size:22px; font-weight:600; }
+  details summary { color:var(--pri); margin-top:16px; cursor:pointer; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:0 10px; }
+  nav { position:fixed; bottom:0; left:0; right:0; display:flex; background:var(--card); border-top:1px solid var(--line); padding-bottom:env(safe-area-inset-bottom); }
+  nav button { flex:1; border:0; border-radius:0; background:none; padding:10px 4px 12px; font-size:13px; color:var(--mut); }
+  nav button span { display:block; font-size:22px; }
+  nav button.on { color:var(--pri); font-weight:600; }
+  .msg { padding:12px; border-radius:10px; margin-bottom:14px; }
+  .msg.ok { background:#1a7f3722; color:var(--ok); } .msg.err { background:#cf222e22; color:var(--bad); }
+  .codes { font-family:ui-monospace, Menlo, monospace; font-size:15px; }
+  video { width:100%; border-radius:12px; background:#000; aspect-ratio:1; object-fit:cover; }
+  .big { font-size:28px; font-weight:700; }
+  .mut { color:var(--mut); font-size:14px; }
+  .bar { height:10px; background:var(--line); border-radius:5px; overflow:hidden; margin:8px 0; }
+  .bar div { height:100%; background:var(--pri); }
+  .grp { display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--line); }
+  .grp:last-child { border:0; }
+  .item { cursor:pointer; }
+  .hidden { display:none !important; }
+</style>
+</head>
+<body>
+<header><span>🧵 Bobine</span><button id="logout" class="hidden">Esci</button></header>
+<main>
+  <div id="msg"></div>
+
+  <!-- ACCESSO -->
+  <section id="v-login" class="card hidden">
+    <b>Accedi</b>
+    <label>Email</label><input id="l-email" type="email" autocomplete="username">
+    <label>Password</label><input id="l-pass" type="password" autocomplete="current-password">
+    <button class="pri" id="l-go">Entra</button>
+  </section>
+
+  <!-- NUOVE BOBINE -->
+  <section id="v-nuove" class="hidden">
+    <div class="card">
+      <label style="margin-top:0">Materiale</label>
+      <div class="chips" id="n-mat"></div>
+      <input id="n-mat-altro" class="hidden" placeholder="Altro materiale" style="margin-top:8px">
+      <label>Colore</label>
+      <input id="n-col" list="colori" placeholder="es. Nero" autocapitalize="sentences">
+      <datalist id="colori"></datalist>
+      <label>Quante bobine</label>
+      <div class="row stepper"><button id="n-meno">−</button><input id="n-qta" type="number" inputmode="numeric" value="1" min="1"><button id="n-piu">+</button></div>
+      <details>
+        <summary>Altri dati (facoltativi)</summary>
+        <div class="grid2">
+          <div><label>Marca</label><input id="n-marca" list="marche"></div>
+          <div><label>Prezzo € / bobina</label><input id="n-prezzo" type="number" inputmode="decimal" step="0.01"></div>
+          <div><label>Diametro mm</label><input id="n-diam" type="number" inputmode="decimal" step="0.01" value="1.75"></div>
+          <div><label>Posizione</label><input id="n-pos" list="posizioni"></div>
+        </div>
+        <datalist id="marche"></datalist><datalist id="posizioni"></datalist>
+      </details>
+      <button class="pri" id="n-salva">Registra e stampa QR</button>
+    </div>
+  </section>
+
+  <!-- SCANSIONE -->
+  <section id="v-scan" class="hidden">
+    <div class="card" id="s-cam">
+      <video id="video" playsinline muted></video>
+      <div class="row" style="margin-top:10px"><input id="s-code" placeholder="oppure scrivi il codice, es. B0001" autocapitalize="characters"><button id="s-cerca">Apri</button></div>
+    </div>
+    <div class="card hidden" id="s-det"></div>
+  </section>
+
+  <!-- MAGAZZINO -->
+  <section id="v-mag" class="hidden">
+    <div class="card"><div class="row"><div><div class="big" id="m-tot">–</div><div class="mut">bobine attive</div></div><div style="margin-left:auto;text-align:right"><div class="big" id="m-kg">–</div><div class="mut">kg di filamento</div></div></div></div>
+    <div class="card" id="m-list"></div>
+    <label style="margin-top:0"><input type="checkbox" id="m-finite" style="width:auto"> mostra anche le finite</label>
+  </section>
+</main>
+
+<nav id="nav" class="hidden">
+  <button data-v="nuove"><span>➕</span>Nuove</button>
+  <button data-v="scan"><span>📷</span>Scansiona</button>
+  <button data-v="mag"><span>📦</span>Magazzino</button>
+</nav>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+<script>
+const SUPABASE_URL = 'https://ygxxtvbuolxgxlkbhczq.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_Fp-JrG3yeuLkcMGoRsFzrw_ewf191pB';
+const MATERIALI = ['PLA', 'PLA+', 'PETG', 'ABS', 'ASA', 'TPU', 'Altro'];
+
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let materiale = 'PLA', stream = null, scanning = false;
+
+function msg(text, ok = true) {
+  $('msg').innerHTML = text ? `<div class="msg ${ok ? 'ok' : 'err'}">${text}</div>` : '';
+  if (text) window.scrollTo(0, 0);
+}
+
+function show(v) {
+  msg('');
+  for (const s of ['login', 'nuove', 'scan', 'mag']) $('v-' + s).classList.toggle('hidden', s !== v);
+  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+  if (v === 'scan') startScan(); else stopScan();
+  if (v === 'mag') loadMag();
+  if (v === 'nuove') loadSuggest();
+}
+
+// ---------- accesso ----------
+async function boot() {
+  const { data } = await db.auth.getSession();
+  const logged = !!data.session;
+  $('nav').classList.toggle('hidden', !logged);
+  $('logout').classList.toggle('hidden', !logged);
+  if (!logged) return show('login');
+  const code = new URLSearchParams(location.search).get('b') || location.hash.slice(1);
+  if (/^B\d+$/i.test(code)) { show('scan'); stopScan(); openSpool(code.toUpperCase()); }
+  else show('nuove');
+}
+$('l-go').onclick = async () => {
+  const { error } = await db.auth.signInWithPassword({ email: $('l-email').value.trim(), password: $('l-pass').value });
+  if (error) msg('Accesso non riuscito: ' + esc(error.message), false); else boot();
+};
+$('logout').onclick = async () => { await db.auth.signOut(); boot(); };
+
+// ---------- nuove bobine ----------
+function drawChips() {
+  $('n-mat').innerHTML = MATERIALI.map(m => `<button class="chip ${m === materiale ? 'on' : ''}" data-m="${m}">${m}</button>`).join('');
+  $('n-mat-altro').classList.toggle('hidden', materiale !== 'Altro');
+}
+$('n-mat').onclick = e => { if (e.target.dataset.m) { materiale = e.target.dataset.m; drawChips(); } };
+$('n-meno').onclick = () => $('n-qta').value = Math.max(1, (+$('n-qta').value || 1) - 1);
+$('n-piu').onclick = () => $('n-qta').value = (+$('n-qta').value || 0) + 1;
+
+async function loadSuggest() {
+  const { data } = await db.from('bobine').select('colore,marca,posizione').order('creata_il', { ascending: false }).limit(500);
+  const uniq = k => [...new Set((data || []).map(r => r[k]).filter(Boolean))];
+  $('colori').innerHTML = uniq('colore').map(v => `<option value="${esc(v)}">`).join('');
+  $('marche').innerHTML = uniq('marca').map(v => `<option value="${esc(v)}">`).join('');
+  $('posizioni').innerHTML = uniq('posizione').map(v => `<option value="${esc(v)}">`).join('');
+}
+
+$('n-salva').onclick = async () => {
+  const mat = materiale === 'Altro' ? $('n-mat-altro').value.trim() : materiale;
+  const colore = $('n-col').value.trim();
+  const qta = parseInt($('n-qta').value, 10);
+  if (!mat) return msg('Scrivi il materiale.', false);
+  if (!colore) return msg('Scrivi il colore.', false);
+  if (!(qta >= 1 && qta <= 100)) return msg('Quantità non valida.', false);
+  const num = v => v === '' ? null : Number(v);
+  const riga = {
+    materiale: mat, colore,
+    marca: $('n-marca').value.trim() || null,
+    prezzo: num($('n-prezzo').value),
+    diametro: num($('n-diam').value) ?? 1.75,
+    posizione: $('n-pos').value.trim() || null,
+  };
+  $('n-salva').disabled = true;
+  const { data, error } = await db.from('bobine').insert(Array.from({ length: qta }, () => ({ ...riga }))).select('id');
+  $('n-salva').disabled = false;
+  if (error) return msg('Errore nel salvataggio: ' + esc(error.message), false);
+  msg(`Registrate ${data.length} bobine ${esc(mat)} ${esc(colore)}.<br><span class="codes">${data.map(r => r.id).join(' · ')}</span><br>I QR verranno stampati dal Mac.`);
+  $('n-col').value = ''; $('n-qta').value = 1;
+  loadSuggest();
+};
+
+// ---------- scansione ----------
+async function startScan() {
+  $('s-det').classList.add('hidden'); $('s-cam').classList.remove('hidden');
+  if (scanning) return;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+  } catch (e) { return msg('Fotocamera non disponibile: scrivi il codice a mano.', false); }
+  const video = $('video'); video.srcObject = stream; await video.play();
+  scanning = true;
+  const canvas = document.createElement('canvas'), ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const tick = () => {
+    if (!scanning) return;
+    if (video.readyState === video.HAVE_ENOUGH_DATA) {
+      canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0);
+      const qr = jsQR(ctx.getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height, { inversionAttempts: 'dontInvert' });
+      const m = qr && qr.data.match(/B\d{4,}/i);
+      if (m) { navigator.vibrate?.(80); stopScan(); return openSpool(m[0].toUpperCase()); }
+    }
+    requestAnimationFrame(tick);
+  };
+  tick();
+}
+function stopScan() {
+  scanning = false;
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+}
+$('s-cerca').onclick = () => { const c = $('s-code').value.trim().toUpperCase(); if (c) { stopScan(); openSpool(/^\d+$/.test(c) ? 'B' + c.padStart(4, '0') : c); } };
+
+async function openSpool(id) {
+  const { data: b, error } = await db.from('bobine').select('*').eq('id', id).maybeSingle();
+  if (error) return msg('Errore: ' + esc(error.message), false);
+  if (!b) { msg(`Bobina ${esc(id)} non trovata.`, false); return startScan(); }
+  $('s-cam').classList.add('hidden');
+  const pct = Math.round(100 * b.peso_rimasto / (b.peso_iniziale || 1000));
+  const extra = [b.marca, b.diametro && b.diametro + ' mm', b.prezzo != null && '€ ' + Number(b.prezzo).toFixed(2), b.posizione && '📍 ' + b.posizione].filter(Boolean).map(esc).join(' · ');
+  const det = $('s-det');
+  det.classList.remove('hidden');
+  det.innerHTML = `
+    <div class="mut">${esc(b.id)}${b.stato === 'finita' ? ' · <b style="color:var(--bad)">FINITA</b>' : ''}</div>
+    <div class="big">${esc(b.materiale)} ${esc(b.colore)}</div>
+    <div class="mut">${extra}</div>
+    <div class="bar"><div style="width:${pct}%"></div></div>
+    <div><b>${b.peso_rimasto} g</b> rimasti su ${b.peso_iniziale} g (${pct}%)</div>
+    <label>Grammi rimasti</label>
+    <div class="row"><input id="d-peso" type="number" inputmode="numeric" placeholder="${b.peso_rimasto}"><button id="d-ok">Salva</button></div>
+    <div class="row" style="margin-top:8px"><input id="d-usati" type="number" inputmode="numeric" placeholder="oppure grammi usati"><button id="d-sub">−</button></div>
+    <div class="row" style="margin-top:16px">
+      ${b.stato === 'finita' ? '<button id="d-riattiva">Riattiva</button>' : '<button class="bad" id="d-finita">Segna finita</button>'}
+      <button id="d-ristampa">Ristampa QR</button>
+      <button id="d-altra" style="margin-left:auto">📷 Altra</button>
+    </div>`;
+  const upd = async (patch, testo) => {
+    const { error } = await db.from('bobine').update(patch).eq('id', b.id);
+    if (error) return msg('Errore: ' + esc(error.message), false);
+    await openSpool(b.id); msg(testo);
+  };
+  $('d-ok').onclick = () => { const g = parseInt($('d-peso').value, 10); if (g >= 0) upd({ peso_rimasto: g }, 'Peso aggiornato.'); };
+  $('d-sub').onclick = () => { const g = parseInt($('d-usati').value, 10); if (g > 0) upd({ peso_rimasto: Math.max(0, b.peso_rimasto - g) }, 'Peso aggiornato.'); };
+  $('d-ristampa').onclick = () => upd({ da_stampare: true }, 'QR rimesso in coda di stampa.');
+  $('d-altra').onclick = () => { msg(''); startScan(); };
+  if ($('d-finita')) $('d-finita').onclick = () => confirm('Segnare la bobina come finita?') && upd({ stato: 'finita' }, 'Bobina segnata come finita.');
+  if ($('d-riattiva')) $('d-riattiva').onclick = () => upd({ stato: 'attiva', peso_rimasto: b.peso_iniziale }, 'Bobina riattivata.');
+}
+
+// ---------- magazzino ----------
+$('m-finite').onchange = () => loadMag();
+async function loadMag() {
+  let q = db.from('bobine').select('id,materiale,colore,peso_rimasto,stato').order('materiale').order('colore');
+  if (!$('m-finite').checked) q = q.eq('stato', 'attiva');
+  const { data, error } = await q;
+  if (error) return msg('Errore: ' + esc(error.message), false);
+  const att = data.filter(b => b.stato === 'attiva');
+  $('m-tot').textContent = att.length;
+  $('m-kg').textContent = (att.reduce((s, b) => s + b.peso_rimasto, 0) / 1000).toFixed(1);
+  const groups = {};
+  for (const b of data) (groups[b.materiale] ??= {})[b.colore] ??= [];
+  for (const b of data) groups[b.materiale][b.colore].push(b);
+  $('m-list').innerHTML = Object.keys(groups).length ? Object.entries(groups).map(([mat, cols]) => `
+    <div style="font-weight:700;margin-top:8px">${esc(mat)}</div>
+    ${Object.entries(cols).map(([col, list]) => `
+      <details><summary class="grp" style="color:inherit;margin:0"><span>${esc(col)}</span><span>${list.filter(b => b.stato === 'attiva').length} × · ${(list.reduce((s, b) => s + b.peso_rimasto, 0) / 1000).toFixed(2)} kg</span></summary>
+      ${list.map(b => `<div class="grp item mut" data-id="${b.id}"><span>${b.id}${b.stato === 'finita' ? ' (finita)' : ''}</span><span>${b.peso_rimasto} g ›</span></div>`).join('')}
+      </details>`).join('')}`).join('') : '<div class="mut">Nessuna bobina.</div>';
+}
+$('m-list').onclick = e => { const it = e.target.closest('.item'); if (it) { show('scan'); stopScan(); openSpool(it.dataset.id); } };
+
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => show(b.dataset.v));
+drawChips();
+boot();
+</script>
+</body>
+</html>
