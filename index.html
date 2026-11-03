@@ -116,6 +116,12 @@
         </div>
         <label>Finitura</label>
         <div class="chips" id="n-fin"></div>
+        <label>Già iniziata? Peso attuale (bobina da 1000 g)</label>
+        <div class="grid2" style="gap:0 10px">
+          <input id="n-rimasti" type="number" inputmode="numeric" placeholder="g rimasti">
+          <input id="n-usati" type="number" inputmode="numeric" placeholder="oppure g usati">
+        </div>
+        <div class="mut" style="font-size:12px;margin-top:4px">Lascia vuoto se è nuova e sigillata.</div>
       </details>
       <button class="pri" id="n-salva">Registra e stampa QR</button>
     </div>
@@ -433,6 +439,12 @@ $('n-salva').onclick = async () => {
   if (!mat) return msg('Manca il materiale: scrivilo nel campo "Altro materiale".', false, 'n-mat-altro');
   if (!colore) return msg('Manca il colore: sceglilo dalla lista o scrivilo a mano.', false, 'n-col');
   if (!(qta >= 1 && qta <= 100)) return msg('Quantità non valida: deve essere tra 1 e 100.', false, 'n-qta');
+  // peso se la bobina è già iniziata (facoltativo): grammi rimasti oppure grammi usati
+  const PIENA = 1000, gR = $('n-rimasti').value.trim(), gU = $('n-usati').value.trim();
+  let rimasto = null;
+  if (gR && gU) return msg('Scrivi solo uno dei due: grammi rimasti oppure grammi usati.', false, 'n-usati');
+  if (gR) { rimasto = Math.round(+gR); if (!(rimasto >= 0 && rimasto <= PIENA)) return msg(`Grammi rimasti non validi: tra 0 e ${PIENA}.`, false, 'n-rimasti'); }
+  if (gU) { const u = Math.round(+gU); if (!(u >= 0 && u <= PIENA)) return msg(`Grammi usati non validi: tra 0 e ${PIENA}.`, false, 'n-usati'); rimasto = PIENA - u; }
   const num = v => v === '' ? null : Number(v);
   const riga = {
     materiale: mat, colore,
@@ -442,6 +454,10 @@ $('n-salva').onclick = async () => {
     posizione: $('n-pos').value.trim() || null,
     finitura,
   };
+  if (rimasto !== null && rimasto < PIENA) {   // già iniziata: la segno come aperta oggi
+    const ora = new Date().toISOString();
+    Object.assign(riga, { peso_rimasto: rimasto, aperta_il: ora, usata_il: ora });
+  }
   $('n-salva').disabled = true;
   const { data, error } = await db.from('bobine').insert(Array.from({ length: qta }, () => ({ ...riga }))).select('id');
   $('n-salva').disabled = false;
@@ -450,6 +466,7 @@ $('n-salva').onclick = async () => {
   msg(`Registrate ${cosa}.`);
   // riepilogo con i codici: resta in alto finché non cambi scheda
   $('msg').innerHTML = `<div class="msg ok">Registrate ${cosa}.<br><span class="codes">${data.map(r => r.id).join(' · ')}</span><br>${MAC ? 'Premi 🖨 Stampa QR in alto per stamparli.' : 'Stampa i QR dal Mac con 🖨 Stampa QR.'}</div>`;
+  $('n-rimasti').value = ''; $('n-usati').value = '';
   colore = null; $('n-col-altro').value = ''; drawColori(); $('n-col-sel').textContent = ''; $('n-foto-box').classList.add('hidden'); $('n-qta').value = 1;
   loadSuggest();
 };
@@ -507,9 +524,10 @@ function evento(m) {
 }
 
 async function openSpool(id) {
-  const [{ data: b, error }, { data: mov }] = await Promise.all([
+  const [{ data: b, error }, { data: mov }, { data: primo }] = await Promise.all([
     db.from('bobine').select('*').eq('id', id).maybeSingle(),
     db.from('movimenti').select('*').eq('bobina_id', id).order('creato_il', { ascending: false }).limit(30),
+    db.from('movimenti').select('peso_prima').eq('bobina_id', id).eq('tipo', 'peso').order('creato_il').limit(1),
   ]);
   if (error) return msg('Errore: ' + esc(error.message), false);
   if (!b) { msg(`Bobina ${esc(id)} non trovata.`, false); return startScan(); }
@@ -524,8 +542,9 @@ async function openSpool(id) {
   stat.push(['📅', 'Registrata', fData(b.creata_il)]);
   if (b.aperta_il) stat.push(['📦', 'Aperta', `${fData(b.aperta_il)}`]);
   if (b.finita_il) stat.push(['🏁', 'Finita in', `${giorni(b.aperta_il || b.creata_il, b.finita_il)} giorni`]);
-  else if (b.aperta_il && b.peso_rimasto < b.peso_iniziale) {
-    const gg = giorni(b.aperta_il, Date.now()), media = (b.peso_iniziale - b.peso_rimasto) / gg;
+  else if (b.aperta_il && b.peso_rimasto < (primo?.[0]?.peso_prima ?? b.peso_rimasto)) {
+    // se è stata registrata già iniziata, il consumo si conta dal peso di partenza, non da 1000 g
+    const base = primo[0].peso_prima, gg = giorni(b.aperta_il, Date.now()), media = (base - b.peso_rimasto) / gg;
     stat.push(['📉', 'Consumo medio', `${Math.round(media)} g/giorno`]);
     stat.push(['⏳', 'Finisce tra', `~${Math.round(b.peso_rimasto / media)} giorni`]);
   }
@@ -546,7 +565,7 @@ async function openSpool(id) {
     ${b.stato === 'attiva' ? `
     <label>Grammi rimasti</label>
     <div class="row"><input id="d-peso" type="number" inputmode="numeric" placeholder="${b.peso_rimasto}"><button id="d-ok">Salva</button></div>
-    <div class="row" style="margin-top:8px"><input id="d-usati" type="number" inputmode="numeric" placeholder="oppure grammi usati"><button id="d-sub">−</button></div>
+    <div class="row" style="margin-top:8px"><input id="d-usati" type="number" inputmode="numeric" placeholder="oppure g usati"><button id="d-sub">−</button></div>
     ${b.aperta_il ? '' : '<button id="d-apri" style="width:100%;margin-top:10px">📦 L\'ho aperta oggi</button>'}` : ''}
 
     <div class="dry ${as.k}">
