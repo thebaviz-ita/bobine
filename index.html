@@ -172,7 +172,24 @@
 
   <!-- MAGAZZINO -->
   <section id="v-mag" class="hidden">
-    <div class="card"><div class="row"><div><div class="big" id="m-tot">–</div><div class="mut">bobine attive</div></div><div style="margin-left:auto;text-align:right"><div class="big" id="m-kg">–</div><div class="mut">kg di filamento</div></div></div></div>
+    <div class="card"><div class="row"><div><div class="big" id="m-tot">–</div><div class="mut" id="m-tot-l">bobine attive</div></div><div style="margin-left:auto;text-align:right"><div class="big" id="m-kg">–</div><div class="mut">kg di filamento</div></div></div>
+      <div class="mut" id="m-riep" style="margin-top:8px;font-size:13px"></div></div>
+    <div class="card">
+      <input id="f-testo" type="search" placeholder="🔍 Cerca (codice, marca, note…)" autocomplete="off">
+      <label>Colore</label>
+      <div class="chips" id="f-col"></div>
+      <label>Materiale</label>
+      <div class="chips" id="f-mat"></div>
+      <div class="grid2">
+        <div><label>Marca</label><select id="f-marca"></select></div>
+        <div><label>Posizione</label><select id="f-pos"></select></div>
+        <div><label>Finitura</label><select id="f-fin"></select></div>
+        <div><label>Stato</label><select id="f-stato">
+          <option value="">Tutte</option><option value="sigillata">Sigillate</option><option value="aperta">Aperte</option>
+          <option value="essiccare">Da essiccare</option><option value="quasi">Quasi finite (barra rossa)</option></select></div>
+      </div>
+      <button id="f-azzera" class="hidden" style="width:100%;margin-top:12px">✕ Azzera filtri</button>
+    </div>
     <div class="card" id="m-list"></div>
     <label style="margin-top:0"><input type="checkbox" id="m-finite" style="width:auto"> mostra anche le finite</label>
   </section>
@@ -1072,23 +1089,108 @@ $('q-salva-tariffe').onclick = async () => {
 $('m-finite').onchange = () => loadMag();
 // data dell'ultima registrazione nel gruppo (le bobine registrate insieme hanno la stessa data)
 const ultimaDi = list => list.reduce((m, b) => (b.creata_il > m ? b.creata_il : m), '');
+// --- ricerca nel magazzino ---
+// famiglia di colore: "Giallo Elettrico" → Giallo; nomi senza parola nota (es. "Lime") → colore della lista più vicino come tinta
+const FAM_NOMI = COLORI.map(([n]) => n).sort((a, b) => b.length - a.length);
+function famiglia(nome) {
+  if (COLORI.some(([n]) => n === nome)) return nome;
+  const t = ' ' + String(nome || '').toLowerCase() + ' ';
+  const k = FAM_NOMI.find(n => t.includes(' ' + n.toLowerCase() + ' '));
+  if (k) return k;
+  const h = coloreDaNome(nome);
+  if (h === 'trasp') return 'Trasparente';
+  if (h === 'multi') return 'Multicolore';
+  if (!h) return 'Altri';
+  const L = rgb2lab(hex2rgb(h)); let best = 'Altri', bd = Infinity;
+  for (const [n, c] of COLORI) {
+    if (c[0] !== '#') continue;
+    const M = rgb2lab(hex2rgb(c)), d = (L[0] - M[0]) ** 2 * 0.5 + (L[1] - M[1]) ** 2 + (L[2] - M[2]) ** 2;
+    if (d < bd) { bd = d; best = n; }
+  }
+  return best;
+}
+let MAG = [];
+const FILTRO = { col: '', mat: '' };
+const statoDi = b => {
+  if (b.stato === 'finita') return 'finita';
+  const pct = 100 * b.peso_rimasto / (b.peso_iniziale || 1000), as = asciutta(b).k;
+  return { pct, sigillata: as === 'mut', essiccare: as === 'warn' };
+};
+function passaFiltri(b, salta) {
+  const t = $('f-testo').value.trim().toLowerCase();
+  if (t && ![b.id, b.colore, b.marca, b.posizione, b.note, b.materiale, b.finitura].some(v => String(v || '').toLowerCase().includes(t))) return false;
+  if (salta !== 'col' && FILTRO.col && famiglia(b.colore) !== FILTRO.col) return false;
+  if (salta !== 'mat' && FILTRO.mat && b.materiale !== FILTRO.mat) return false;
+  if ($('f-marca').value && (b.marca || '') !== $('f-marca').value) return false;
+  if ($('f-pos').value && (b.posizione || '') !== $('f-pos').value) return false;
+  if ($('f-fin').value && (b.finitura || '') !== $('f-fin').value) return false;
+  const st = $('f-stato').value;
+  if (st) {
+    const s = statoDi(b);
+    if (s === 'finita') return false;
+    if (st === 'sigillata' && !s.sigillata) return false;
+    if (st === 'aperta' && s.sigillata) return false;
+    if (st === 'essiccare' && !s.essiccare) return false;
+    if (st === 'quasi' && !(s.pct < SOGLIE.rossa)) return false;
+  }
+  return true;
+}
+function drawFiltri() {
+  // i bottoni mostrano solo le scelte che hanno bobine (tenendo conto degli altri filtri), con il numero
+  const conta = (k, f) => { const m = {}; for (const b of MAG) if (passaFiltri(b, k)) { const v = f(b); m[v] = (m[v] || 0) + 1; } return m; };
+  const cc = conta('col', b => famiglia(b.colore)), cm = conta('mat', b => b.materiale);
+  const ordineCol = [...COLORI.map(([n]) => n), 'Altri'];
+  $('f-col').innerHTML = ordineCol.filter(n => cc[n] || n === FILTRO.col).map(n => {
+    const h = COLORI.find(([x]) => x === n)?.[1];
+    return `<button class="chip col ${n === FILTRO.col ? 'on' : ''}" data-fc="${esc(n)}"><i style="${h ? tinta(h) : 'background:transparent;border-style:dashed'}"></i>${esc(n)} <span style="opacity:.6">${cc[n] || 0}</span></button>`;
+  }).join('') || '<span class="mut">—</span>';
+  $('f-mat').innerHTML = Object.keys(cm).concat(FILTRO.mat && !cm[FILTRO.mat] ? [FILTRO.mat] : []).sort().map(n =>
+    `<button class="chip ${n === FILTRO.mat ? 'on' : ''}" data-fm="${esc(n)}">${esc(n)} <span style="opacity:.6">${cm[n] || 0}</span></button>`).join('') || '<span class="mut">—</span>';
+  const attivo = FILTRO.col || FILTRO.mat || $('f-testo').value.trim() || ['f-marca', 'f-pos', 'f-fin', 'f-stato'].some(id => $(id).value);
+  $('f-azzera').classList.toggle('hidden', !attivo);
+  return attivo;
+}
+$('f-col').onclick = e => { const b = e.target.closest('[data-fc]'); if (b) { FILTRO.col = FILTRO.col === b.dataset.fc ? '' : b.dataset.fc; drawMag(); } };
+$('f-mat').onclick = e => { const b = e.target.closest('[data-fm]'); if (b) { FILTRO.mat = FILTRO.mat === b.dataset.fm ? '' : b.dataset.fm; drawMag(); } };
+$('f-testo').oninput = () => drawMag();
+['f-marca', 'f-pos', 'f-fin', 'f-stato'].forEach(id => $(id).onchange = () => drawMag());
+$('f-azzera').onclick = () => {
+  FILTRO.col = FILTRO.mat = ''; $('f-testo').value = '';
+  ['f-marca', 'f-pos', 'f-fin', 'f-stato'].forEach(id => $(id).value = '');
+  drawMag();
+};
+
 async function loadMag() {
-  let q = db.from('bobine').select('id,materiale,colore,finitura,marca,peso_rimasto,stato,creata_il,aperta_il,usata_il,essiccata_il').order('materiale').order('colore').order('finitura').order('id');
+  let q = db.from('bobine').select('id,materiale,colore,finitura,marca,posizione,note,peso_iniziale,peso_rimasto,stato,creata_il,aperta_il,usata_il,essiccata_il').order('materiale').order('colore').order('finitura').order('id');
   if (!$('m-finite').checked) q = q.eq('stato', 'attiva');
   const { data, error } = await q;
   if (error) return msg('Errore: ' + esc(error.message), false);
+  MAG = data;
+  riempiSelect('f-marca', distinti(MAG, 'marca'), 'Tutte');
+  riempiSelect('f-pos', distinti(MAG, 'posizione'), 'Tutte');
+  riempiSelect('f-fin', distinti(MAG, 'finitura'), 'Tutte');
+  drawMag();
+}
+function drawMag() {
+  const filtrato = drawFiltri();
+  const data = MAG.filter(b => passaFiltri(b));
   const att = data.filter(b => b.stato === 'attiva');
   $('m-tot').textContent = att.length;
+  $('m-tot-l').textContent = filtrato ? 'bobine trovate' : 'bobine attive';
   $('m-kg').textContent = (att.reduce((s, b) => s + b.peso_rimasto, 0) / 1000).toFixed(1);
+  // riepilogo per materiale quando c'è un filtro (es. tutte le gialle: PLA ×2 · PETG ×1)
+  const perMat = {};
+  for (const b of att) { const m = perMat[b.materiale] ??= { n: 0, g: 0 }; m.n++; m.g += b.peso_rimasto; }
+  $('m-riep').innerHTML = filtrato && att.length ? Object.entries(perMat).map(([m, v]) => `<b>${esc(m)}</b> ×${v.n} (${(v.g / 1000).toFixed(2)} kg)`).join(' · ') : '';
   const groups = {};
   const voce = b => b.colore + (b.finitura ? '|' + b.finitura : '');
   for (const b of data) ((groups[b.materiale] ??= {})[voce(b)] ??= []).push(b);
   $('m-list').innerHTML = Object.keys(groups).length ? Object.entries(groups).map(([mat, cols]) => `
     <div style="font-weight:700;margin-top:8px">${esc(mat)}</div>
     ${Object.entries(cols).map(([col, list]) => `
-      <details><summary class="grp" style="color:inherit;margin:0"><span>${pallino(col.split('|')[0])}${esc(col.split('|')[0])}${col.includes('|') ? ' <span class="mut">' + esc(col.split('|')[1].toLowerCase()) + '</span>' : ''}</span><span>${list.filter(b => b.stato === 'attiva').length} × · ${(list.reduce((s, b) => s + b.peso_rimasto, 0) / 1000).toFixed(2)} kg</span></summary>
+      <details ${filtrato ? 'open' : ''}><summary class="grp" style="color:inherit;margin:0"><span>${pallino(col.split('|')[0])}${esc(col.split('|')[0])}${col.includes('|') ? ' <span class="mut">' + esc(col.split('|')[1].toLowerCase()) + '</span>' : ''}</span><span>${list.filter(b => b.stato === 'attiva').length} × · ${(list.reduce((s, b) => s + b.peso_rimasto, 0) / 1000).toFixed(2)} kg</span></summary>
       ${list.map(b => `<div class="grp item mut ${list.length > 1 && b.creata_il === ultimaDi(list) ? 'ultima' : ''}" data-id="${b.id}"><span>${b.id}${b.stato === 'finita' ? ' (finita)' : ' ' + ({ ok: '✅', warn: '💧', mut: '🔒' })[asciutta(b).k]}${b.marca ? ' · ' + esc(b.marca) : ''}${list.length > 1 && b.creata_il === ultimaDi(list) ? ' <span class="nuova">🆕 ultima</span>' : ''}</span><span>${b.peso_rimasto} g ›</span></div>`).join('')}
-      </details>`).join('')}`).join('') : '<div class="mut">Nessuna bobina.</div>';
+      </details>`).join('')}`).join('') : `<div class="mut">${filtrato ? 'Nessuna bobina con questi filtri.' : 'Nessuna bobina.'}</div>`;
 }
 $('m-list').onclick = e => { const it = e.target.closest('.item'); if (it) { show('scan'); stopScan(); openSpool(it.dataset.id); } };
 
