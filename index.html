@@ -56,11 +56,17 @@
   textarea { width:100%; font:inherit; font-size:16px; padding:10px 12px; border:1px solid var(--line); border-radius:10px; background:var(--bg); color:var(--txt); }
   .ev { display:flex; gap:10px; padding:8px 0; border-bottom:1px solid var(--line); font-size:15px; }
   .ev .mut { margin-left:auto; } .ev-i { width:22px; text-align:center; }
+  .chip.col { display:inline-flex; align-items:center; gap:6px; padding:8px 12px; font-size:14px; }
+  .chip.col i { width:16px; height:16px; border-radius:50%; border:1px solid #8888; flex:none; }
+  .foto-btn { display:inline-block; padding:10px 14px; border:1px solid var(--line); border-radius:10px; background:var(--card); cursor:pointer; font-size:14px; }
+  #n-canvas { width:100%; border-radius:12px; margin-top:10px; display:block; touch-action:manipulation; }
+  .pallino { display:inline-block; width:12px; height:12px; border-radius:50%; border:1px solid #8888; margin-right:8px; vertical-align:-1px; }
+  header .azioni { display:flex; gap:8px; }
   .hidden { display:none !important; }
 </style>
 </head>
 <body>
-<header><span>🧵 Bobine</span><button id="logout" class="hidden">Esci</button></header>
+<header><span>🧵 Bobine</span><div class="azioni"><button id="stampa" class="hidden">🖨 Stampa QR</button><button id="logout" class="hidden">Esci</button></div></header>
 <main>
   <div id="msg"></div>
 
@@ -79,8 +85,12 @@
       <div class="chips" id="n-mat"></div>
       <input id="n-mat-altro" class="hidden" placeholder="Altro materiale" style="margin-top:8px">
       <label>Colore</label>
-      <input id="n-col" list="colori" placeholder="es. Nero" autocapitalize="sentences">
-      <datalist id="colori"></datalist>
+      <div class="chips" id="n-col"></div>
+      <div class="row" style="margin-top:10px; flex-wrap:wrap">
+        <label class="foto-btn">📷 Riconosci dalla foto<input id="n-foto" type="file" accept="image/*" capture="environment" hidden></label>
+        <span id="n-col-sel" class="mut"></span>
+      </div>
+      <div id="n-foto-box" class="hidden"><canvas id="n-canvas"></canvas><div class="mut" style="margin-top:6px">Tocca il filamento nella foto per correggere il colore.</div></div>
       <label>Quante bobine</label>
       <div class="row stepper"><button id="n-meno">−</button><input id="n-qta" type="number" inputmode="numeric" value="1" min="1"><button id="n-piu">+</button></div>
       <details>
@@ -130,7 +140,16 @@ const MATERIALI = ['PLA', 'PLA+', 'PETG', 'ABS', 'ASA', 'TPU', 'Altro'];
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let materiale = 'PLA', stream = null, scanning = false;
+let materiale = 'PLA', colore = null, stream = null, scanning = false;
+const MAC = /Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints < 2;
+const COLORI = [['Nero', '#1c1c1c'], ['Bianco', '#f4f4f2'], ['Grigio', '#7d7f82'], ['Argento', '#b9bdc3'],
+  ['Rosso', '#c62828'], ['Arancione', '#ef6c00'], ['Giallo', '#f9c623'], ['Oro', '#c39b2c'],
+  ['Verde', '#2e7d32'], ['Verde chiaro', '#8bc34a'], ['Blu', '#1a4fb5'], ['Azzurro', '#4fb3e8'],
+  ['Viola', '#6a2c91'], ['Rosa', '#f06292'], ['Marrone', '#6d4c41'], ['Beige', '#d8c6a3'],
+  ['Trasparente', 'trasp'], ['Multicolore', 'multi']];
+const tinta = h => h === 'trasp' ? 'background:repeating-conic-gradient(#ccc 0 25%,#fff 0 50%) 0 0/8px 8px'
+  : h === 'multi' ? 'background:conic-gradient(#e53935,#fb8c00,#fdd835,#43a047,#1e88e5,#8e24aa,#e53935)' : 'background:' + h;
+const pallino = nome => { const c = COLORI.find(([n]) => n === nome); return c ? `<i class="pallino" style="${tinta(c[1])}"></i>` : ''; };
 
 function msg(text, ok = true) {
   $('msg').innerHTML = text ? `<div class="msg ${ok ? 'ok' : 'err'}">${text}</div>` : '';
@@ -152,6 +171,7 @@ async function boot() {
   const logged = !!data.session;
   $('nav').classList.toggle('hidden', !logged);
   $('logout').classList.toggle('hidden', !logged);
+  $('stampa').classList.toggle('hidden', !(logged && MAC));
   if (!logged) return show('login');
   const code = new URLSearchParams(location.search).get('b') || location.hash.slice(1);
   if (/^B\d+$/i.test(code)) { show('scan'); stopScan(); openSpool(code.toUpperCase()); }
@@ -162,6 +182,7 @@ $('l-go').onclick = async () => {
   if (error) msg('Accesso non riuscito: ' + esc(error.message), false); else boot();
 };
 $('logout').onclick = async () => { await db.auth.signOut(); boot(); };
+$('stampa').onclick = () => { location.href = 'bobine://stampa'; };
 
 // ---------- nuove bobine ----------
 function drawChips() {
@@ -172,20 +193,73 @@ $('n-mat').onclick = e => { if (e.target.dataset.m) { materiale = e.target.datas
 $('n-meno').onclick = () => $('n-qta').value = Math.max(1, (+$('n-qta').value || 1) - 1);
 $('n-piu').onclick = () => $('n-qta').value = (+$('n-qta').value || 0) + 1;
 
+function drawColori() {
+  $('n-col').innerHTML = COLORI.map(([n, h]) => `<button class="chip col ${n === colore ? 'on' : ''}" data-c="${n}"><i style="${tinta(h)}"></i>${n}</button>`).join('');
+}
+$('n-col').onclick = e => { const b = e.target.closest('[data-c]'); if (b) { colore = b.dataset.c; drawColori(); $('n-col-sel').textContent = ''; } };
+
+// --- riconoscimento del colore dalla foto (tutto sul telefono, nessun invio) ---
+const hex2rgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+function rgb2lab(rgb) {
+  const [r, g, b] = rgb.map(v => { v /= 255; return v > 0.04045 ? ((v + 0.055) / 1.055) ** 2.4 : v / 12.92; });
+  const f = t => t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116;
+  const x = f((r * 0.4124 + g * 0.3576 + b * 0.1805) / 0.95047), y = f(r * 0.2126 + g * 0.7152 + b * 0.0722), z = f((r * 0.0193 + g * 0.1192 + b * 0.9505) / 1.08883);
+  return [116 * y - 16, 500 * (x - y), 200 * (y - z)];
+}
+function piuVicino(rgb) {
+  const L = rgb2lab(rgb); let best = null, bd = Infinity;
+  for (const [n, h] of COLORI) {
+    if (h[0] !== '#') continue;
+    const M = rgb2lab(hex2rgb(h)), d = (L[0] - M[0]) ** 2 * 0.5 + (L[1] - M[1]) ** 2 + (L[2] - M[2]) ** 2;  // la luce cambia la luminosità più della tinta
+    if (d < bd) { bd = d; best = n; }
+  }
+  return best;
+}
+function dominante(ctx, x, y, w, h) {
+  const d = ctx.getImageData(x, y, w, h).data, bins = new Map();
+  for (let i = 0; i < d.length; i += 4) {
+    const k = (d[i] >> 4) << 8 | (d[i + 1] >> 4) << 4 | d[i + 2] >> 4;
+    const v = bins.get(k) || [0, 0, 0, 0]; v[0]++; v[1] += d[i]; v[2] += d[i + 1]; v[3] += d[i + 2]; bins.set(k, v);
+  }
+  let top = [0, 0, 0, 0]; for (const v of bins.values()) if (v[0] > top[0]) top = v;
+  return [top[1] / top[0], top[2] / top[0], top[3] / top[0]].map(Math.round);
+}
+let foto = null;
+function analizza(px, py, r) {
+  const c = $('n-canvas'), ctx = c.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(foto, 0, 0, c.width, c.height);
+  const x = Math.max(0, px - r), y = Math.max(0, py - r), w = Math.min(c.width - x, 2 * r), h = Math.min(c.height - y, 2 * r);
+  const rgb = dominante(ctx, x, y, w, h);
+  ctx.lineWidth = 4; ctx.strokeStyle = '#fff'; ctx.strokeRect(x, y, w, h); ctx.lineWidth = 2; ctx.strokeStyle = '#000'; ctx.strokeRect(x, y, w, h);
+  colore = piuVicino(rgb); drawColori();
+  $('n-col-sel').innerHTML = `rilevato <i class="pallino" style="background:rgb(${rgb})"></i>→ <b>${colore}</b>`;
+}
+$('n-foto').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  foto = await createImageBitmap(f);
+  const c = $('n-canvas'), k = Math.min(1, 700 / Math.max(foto.width, foto.height));
+  c.width = Math.round(foto.width * k); c.height = Math.round(foto.height * k);
+  $('n-foto-box').classList.remove('hidden');
+  analizza(c.width / 2, c.height / 2, Math.round(Math.min(c.width, c.height) * 0.2));
+  e.target.value = '';
+};
+$('n-canvas').onclick = e => {
+  const c = $('n-canvas'), r = c.getBoundingClientRect();
+  analizza((e.clientX - r.left) * c.width / r.width, (e.clientY - r.top) * c.height / r.height, Math.round(Math.min(c.width, c.height) * 0.05));
+};
+
 async function loadSuggest() {
   const { data } = await db.from('bobine').select('colore,marca,posizione').order('creata_il', { ascending: false }).limit(500);
   const uniq = k => [...new Set((data || []).map(r => r[k]).filter(Boolean))];
-  $('colori').innerHTML = uniq('colore').map(v => `<option value="${esc(v)}">`).join('');
   $('marche').innerHTML = uniq('marca').map(v => `<option value="${esc(v)}">`).join('');
   $('posizioni').innerHTML = uniq('posizione').map(v => `<option value="${esc(v)}">`).join('');
 }
 
 $('n-salva').onclick = async () => {
   const mat = materiale === 'Altro' ? $('n-mat-altro').value.trim() : materiale;
-  const colore = $('n-col').value.trim();
   const qta = parseInt($('n-qta').value, 10);
   if (!mat) return msg('Scrivi il materiale.', false);
-  if (!colore) return msg('Scrivi il colore.', false);
+  if (!colore) return msg('Scegli il colore.', false);
   if (!(qta >= 1 && qta <= 100)) return msg('Quantità non valida.', false);
   const num = v => v === '' ? null : Number(v);
   const riga = {
@@ -199,8 +273,8 @@ $('n-salva').onclick = async () => {
   const { data, error } = await db.from('bobine').insert(Array.from({ length: qta }, () => ({ ...riga }))).select('id');
   $('n-salva').disabled = false;
   if (error) return msg('Errore nel salvataggio: ' + esc(error.message), false);
-  msg(`Registrate ${data.length} bobine ${esc(mat)} ${esc(colore)}.<br><span class="codes">${data.map(r => r.id).join(' · ')}</span><br>I QR verranno stampati dal Mac.`);
-  $('n-col').value = ''; $('n-qta').value = 1;
+  msg(`Registrate ${data.length} bobine ${esc(mat)} ${esc(colore)}.<br><span class="codes">${data.map(r => r.id).join(' · ')}</span><br>${MAC ? 'Premi 🖨 Stampa QR in alto per stamparli.' : 'Stampa i QR dal Mac con 🖨 Stampa QR.'}`);
+  colore = null; drawColori(); $('n-col-sel').textContent = ''; $('n-foto-box').classList.add('hidden'); $('n-qta').value = 1;
   loadSuggest();
 };
 
@@ -360,7 +434,7 @@ async function loadMag() {
   $('m-list').innerHTML = Object.keys(groups).length ? Object.entries(groups).map(([mat, cols]) => `
     <div style="font-weight:700;margin-top:8px">${esc(mat)}</div>
     ${Object.entries(cols).map(([col, list]) => `
-      <details><summary class="grp" style="color:inherit;margin:0"><span>${esc(col)}</span><span>${list.filter(b => b.stato === 'attiva').length} × · ${(list.reduce((s, b) => s + b.peso_rimasto, 0) / 1000).toFixed(2)} kg</span></summary>
+      <details><summary class="grp" style="color:inherit;margin:0"><span>${pallino(col)}${esc(col)}</span><span>${list.filter(b => b.stato === 'attiva').length} × · ${(list.reduce((s, b) => s + b.peso_rimasto, 0) / 1000).toFixed(2)} kg</span></summary>
       ${list.map(b => `<div class="grp item mut" data-id="${b.id}"><span>${b.id}${b.stato === 'finita' ? ' (finita)' : ' ' + ({ ok: '✅', warn: '💧', mut: '🔒' })[asciutta(b).k]}</span><span>${b.peso_rimasto} g ›</span></div>`).join('')}
       </details>`).join('')}`).join('') : '<div class="mut">Nessuna bobina.</div>';
 }
@@ -368,6 +442,7 @@ $('m-list').onclick = e => { const it = e.target.closest('.item'); if (it) { sho
 
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => show(b.dataset.v));
 drawChips();
+drawColori();
 boot();
 </script>
 </body>
