@@ -163,6 +163,11 @@
       <button class="pri" id="i-salva">Salva impostazioni</button>
       <button id="i-default" style="width:100%;margin-top:8px">Ripristina valori iniziali (60% / 25%)</button>
     </div>
+    <div class="card">
+      <b>I tuoi colori</b>
+      <div class="mut" style="margin-top:4px">I colori che scrivi a mano vengono ricordati e compaiono nella lista dei colori. Tocca ✕ per toglierne uno.</div>
+      <div class="chips" id="i-colori" style="margin-top:10px"></div>
+    </div>
   </section>
 </main>
 
@@ -289,8 +294,31 @@ function show(v) {
 // ---------- impostazioni (salvate nel profilo dell'account: valgono su telefono e Mac) ----------
 const SOGLIE_BASE = { verde: 60, rossa: 25 };
 let SOGLIE = { ...SOGLIE_BASE };
+// colori scritti a mano, ricordati nel profilo dell'account (telefono e Mac)
+let MIEI = [], MIEI_SALVATI = false;
+const stessoNome = (a, b) => a.toLowerCase() === b.toLowerCase();
+async function salvaMiei() {
+  const { error } = await db.auth.updateUser({ data: { soglie: SOGLIE, colori: MIEI } });
+  if (error) msg('Non sono riuscito a salvare i tuoi colori: ' + esc(error.message), false);
+  MIEI_SALVATI = true; drawColori();
+}
+function ricordaColore(c) {
+  if (!c || COLORI.some(([n]) => stessoNome(n, c)) || MIEI.some(n => stessoNome(n, c))) return;
+  MIEI.push(c); salvaMiei();
+}
+function drawMiei() {
+  $('i-colori').innerHTML = MIEI.length ? MIEI.map((n, i) => `<button type="button" class="chip col" data-i="${i}">${pallino(n)}${esc(n)} ✕</button>`).join('')
+    : '<span class="mut">Nessuno per ora.</span>';
+}
+$('i-colori').onclick = e => {
+  const b = e.target.closest('[data-i]'); if (!b) return;
+  const n = MIEI[+b.dataset.i];
+  if (!confirm(`Togliere "${n}" dai tuoi colori?\n\nLe bobine già registrate con questo colore non cambiano.`)) return;
+  MIEI.splice(+b.dataset.i, 1); salvaMiei().then(() => { drawMiei(); msg(`"${n}" tolto dai tuoi colori.`); });
+};
 const coloreBarra = pct => pct > SOGLIE.verde ? '#2da44e' : pct >= SOGLIE.rossa ? '#e8890c' : '#d1242f';
 function drawImp() {
+  drawMiei();
   $('i-verde').value = SOGLIE.verde; $('i-rossa').value = SOGLIE.rossa; anteprimaImp();
 }
 function anteprimaImp() {
@@ -301,7 +329,7 @@ function anteprimaImp() {
 }
 $('i-verde').oninput = $('i-rossa').oninput = anteprimaImp;
 async function salvaImp(nuove) {
-  const { error } = await db.auth.updateUser({ data: { soglie: nuove } });
+  const { error } = await db.auth.updateUser({ data: { soglie: nuove, colori: MIEI } });
   if (error) return msg('Errore nel salvataggio: ' + esc(error.message), false);
   SOGLIE = nuove; drawImp(); msg('Impostazioni salvate.');
 }
@@ -320,7 +348,10 @@ async function boot() {
   $('logout').classList.toggle('hidden', !logged);
   $('stampa').classList.toggle('hidden', !(logged && MAC));
   if (!logged) return show('login');
-  SOGLIE = { ...SOGLIE_BASE, ...(data.session.user.user_metadata?.soglie || {}) };
+  const meta = data.session.user.user_metadata || {};
+  SOGLIE = { ...SOGLIE_BASE, ...(meta.soglie || {}) };
+  MIEI_SALVATI = Array.isArray(meta.colori); MIEI = MIEI_SALVATI ? [...meta.colori] : [];
+  drawColori();
   const code = new URLSearchParams(location.search).get('b') || location.hash.slice(1);
   if (/^B\d+$/i.test(code)) { show('scan'); stopScan(); openSpool(code.toUpperCase()); }
   else show('nuove');
@@ -355,13 +386,16 @@ $('n-meno').onclick = () => $('n-qta').value = Math.max(1, (+$('n-qta').value ||
 $('n-piu').onclick = () => $('n-qta').value = (+$('n-qta').value || 0) + 1;
 
 function drawColori() {
-  $('n-col').innerHTML = COLORI.map(([n, h]) => `<button class="chip col ${n === colore ? 'on' : ''}" data-c="${n}"><i style="${tinta(h)}"></i>${n}</button>`).join('');
+  const chip = (n, stile) => `<button class="chip col ${n === colore ? 'on' : ''}" data-c="${esc(n)}"><i style="${stile}"></i>${esc(n)}</button>`;
+  $('n-col').innerHTML = COLORI.map(([n, h]) => chip(n, tinta(h))).join('')
+    + (MIEI.length ? '<div class="mut" style="width:100%;font-size:12px;margin-top:4px">I tuoi colori</div>'
+      + MIEI.map(n => { const h = coloreDaNome(n); return chip(n, h ? tinta(h) : 'background:transparent;border-style:dashed'); }).join('') : '');
 }
 $('n-col').onclick = e => { const b = e.target.closest('[data-c]'); if (b) { colore = b.dataset.c; $('n-col-altro').value = ''; drawColori(); $('n-col-sel').textContent = ''; } };
 // colore scritto a mano: prende il posto di quello della lista
 $('n-col-altro').addEventListener('input', () => {
   const t = $('n-col-altro').value.trim();
-  const std = COLORI.find(([n]) => n.toLowerCase() === t.toLowerCase());
+  const std = COLORI.find(([n]) => stessoNome(n, t)) || MIEI.filter(n => stessoNome(n, t)).map(n => [n])[0];
   colore = std ? std[0] : (t || null); drawColori();
   $('n-col-sel').innerHTML = !t || std ? '' : coloreDaNome(t) ? `${pallino(t)}riconosciuto` : 'colore non riconosciuto';
 });
@@ -376,7 +410,7 @@ function rgb2lab(rgb) {
 }
 function piuVicino(rgb) {
   const L = rgb2lab(rgb); let best = null, bd = Infinity;
-  for (const [n, h] of COLORI) {
+  for (const [n, h] of [...COLORI, ...MIEI.map(n => [n, coloreDaNome(n) || ''])]) {
     if (h[0] !== '#') continue;
     const M = rgb2lab(hex2rgb(h)), d = (L[0] - M[0]) ** 2 * 0.5 + (L[1] - M[1]) ** 2 + (L[2] - M[2]) ** 2;  // la luce cambia la luminosità più della tinta
     if (d < bd) { bd = d; best = n; }
@@ -431,6 +465,8 @@ async function loadSuggest() {
   SUG.marca = uniq('marca'); SUG.posizione = uniq('posizione');
   const std = new Set(COLORI.map(([n]) => n.toLowerCase()));
   SUG.colore = uniq('colore').filter(v => !std.has(v.toLowerCase()));      // colori scritti a mano in passato
+  if (!MIEI_SALVATI && SUG.colore.length) { MIEI = [...SUG.colore]; salvaMiei(); }
+  SUG.colore = [...new Set([...MIEI, ...SUG.colore])];
   SUG.tuttiColori = [...COLORI.map(([n]) => n), ...SUG.colore];
   SUG.caricati = true;
 }
@@ -489,6 +525,7 @@ $('n-salva').onclick = async () => {
   $('n-salva').disabled = false;
   if (error) return msg('Errore nel salvataggio: ' + esc(error.message), false);
   const cosa = `${data.length} ${data.length === 1 ? 'bobina' : 'bobine'} ${esc(mat)} ${esc(colore)}${finitura ? ' ' + finitura.toLowerCase() : ''}`;
+  ricordaColore(colore);
   const codici = data.map(r => r.id).join(' · '), stampa = MAC ? 'Premi 🖨 Stampa QR in alto per stamparli.' : 'Stampa i QR dal Mac con 🖨 Stampa QR.';
   // riepilogo con i codici: resta in alto finché non cambi scheda
   $('msg').innerHTML = `<div class="msg ok">Registrate ${cosa}.<br><span class="codes">${codici}</span><br>${stampa}</div>`;
@@ -633,8 +670,9 @@ async function openSpool(id) {
   suggerisci('d-pos', 'posizione'); suggerisci('d-col', 'tuttiColori'); if (!SUG.caricati) loadSuggest();
   on('d-col-ok', () => {
     let c = $('d-col').value.trim(); if (!c) return msg('Scrivi il colore.', false, 'd-col');
-    const std = COLORI.find(([n]) => n.toLowerCase() === c.toLowerCase()); if (std) c = std[0];
+    const std = COLORI.find(([n]) => stessoNome(n, c)) || MIEI.filter(n => stessoNome(n, c)).map(n => [n])[0]; if (std) c = std[0];
     if (c === b.colore) return;
+    ricordaColore(c);
     if (confirm(`Cambiare il colore di ${b.id} da "${b.colore}" a "${c}"?`)) upd({ colore: c }, 'Colore cambiato.').then(() => { SUG.caricati = false; });
   });
   on('d-ok', () => { const g = parseInt($('d-peso').value, 10); if (g >= 0) upd({ peso_rimasto: Math.min(g, b.peso_iniziale) }, 'Peso aggiornato.'); });
