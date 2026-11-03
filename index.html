@@ -33,7 +33,7 @@
   details summary { color:var(--pri); margin-top:16px; cursor:pointer; }
   .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:0 10px; }
   nav { position:fixed; bottom:0; left:0; right:0; display:flex; background:var(--card); border-top:1px solid var(--line); padding-bottom:env(safe-area-inset-bottom); }
-  nav button { flex:1; border:0; border-radius:0; background:none; padding:10px 2px 12px; font-size:12px; color:var(--mut); }
+  nav button { flex:1; min-width:0; border:0; border-radius:0; background:none; padding:10px 0 12px; font-size:11px; color:var(--mut); }
   nav button span { display:block; font-size:22px; }
   nav button.on { color:var(--pri); font-weight:600; }
   .msg { padding:12px; border-radius:10px; margin-bottom:14px; }
@@ -61,6 +61,15 @@
   .grp { display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--line); }
   .grp:last-child { border:0; }
   .item { cursor:pointer; }
+  .grid3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:0 8px; }
+  .grid3 select { font-size:15px; padding:10px 6px; }
+  .pg { display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1fr) 84px; gap:10px; align-items:center; padding:7px 0; border-bottom:1px solid var(--line); }
+  .pg:last-child { border:0; }
+  .pg-n { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:14px; }
+  .pg-bar { height:10px; }
+  .pg-bar div { height:100%; background:var(--pri); border-radius:0 4px 4px 0; min-width:4px; }
+  .pg-v { text-align:right; font-size:14px; white-space:nowrap; } .pg-v .mut { font-size:11px; }
+  .tip { position:absolute; width:160px; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:8px 10px; font-size:13px; box-shadow:0 6px 20px #0003; pointer-events:none; }
   .item.ultima { background:#1f6feb14; border-left:3px solid var(--pri); padding-left:8px; color:var(--txt); }
   .nuova { font-size:11px; font-weight:700; color:var(--pri); white-space:nowrap; }
   .stats { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:14px; }
@@ -85,7 +94,7 @@
 </style>
 </head>
 <body>
-<header><span>🧵 Bobine</span><div class="azioni"><button id="stampa" class="hidden">🖨 Stampa QR</button><button id="logout" class="hidden">Esci</button></div></header>
+<header><span>🧵 Bobine</span><div class="azioni"><button id="stampa" class="hidden">🖨 Stampa QR</button><button id="impbtn" class="hidden" title="Impostazioni">⚙️</button><button id="logout" class="hidden">Esci</button></div></header>
 <main>
   <div id="msg"></div>
 
@@ -150,6 +159,70 @@
     <label style="margin-top:0"><input type="checkbox" id="m-finite" style="width:auto"> mostra anche le finite</label>
   </section>
 
+  <!-- PREZZI -->
+  <section id="v-prezzi" class="hidden">
+    <div class="card">
+      <b>Filtra</b>
+      <div class="grid3">
+        <div><label>Materiale</label><select id="p-mat"></select></div>
+        <div><label>Marca</label><select id="p-marca"></select></div>
+        <div><label>Colore</label><select id="p-col"></select></div>
+      </div>
+      <div class="stats" id="p-stat"></div>
+      <div class="mut" id="p-senza" style="margin-top:8px;font-size:13px"></div>
+    </div>
+    <div class="card">
+      <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <b>Prezzo medio €/kg per</b>
+        <div class="chips" id="p-per"></div>
+      </div>
+      <div id="p-gruppi" style="margin-top:10px"></div>
+    </div>
+    <div class="card">
+      <b>Prezzo €/kg nel tempo</b>
+      <div id="p-grafico" style="position:relative;margin-top:10px"></div>
+    </div>
+    <div class="card">
+      <b>Acquisti</b>
+      <div id="p-acquisti" style="margin-top:6px"></div>
+    </div>
+  </section>
+
+  <!-- PREVENTIVO -->
+  <section id="v-prev" class="hidden">
+    <div class="card">
+      <b>Materiale</b>
+      <div class="grid3">
+        <div><label>Materiale</label><select id="q-mat"></select></div>
+        <div><label>Marca</label><select id="q-marca"></select></div>
+        <div><label>Colore</label><select id="q-col"></select></div>
+      </div>
+      <label>Prezzo filamento € / kg</label>
+      <input id="q-eurokg" type="number" inputmode="decimal" step="0.01">
+      <div class="mut" id="q-eurokg-info" style="font-size:13px;margin-top:4px"></div>
+      <label>Grammi di filamento (dallo slicer)</label>
+      <input id="q-grammi" type="number" inputmode="numeric" placeholder="es. 120">
+      <label>Tempo di stampa</label>
+      <div class="row"><input id="q-sh" type="number" inputmode="numeric" placeholder="0"><span>h</span><input id="q-sm" type="number" inputmode="numeric" placeholder="0"><span>min</span></div>
+      <label>Tuo tempo di lavoro (preparazione, rifinitura…)</label>
+      <div class="row"><input id="q-lh" type="number" inputmode="numeric" placeholder="0"><span>h</span><input id="q-lm" type="number" inputmode="numeric" placeholder="0"><span>min</span></div>
+      <label>Quantità di pezzi</label>
+      <input id="q-pezzi" type="number" inputmode="numeric" value="1" min="1">
+    </div>
+    <div class="card">
+      <b>Le tue tariffe</b>
+      <div class="grid2">
+        <div><label>Stampante €/ora</label><input id="q-macchina" type="number" inputmode="decimal" step="0.01"></div>
+        <div><label>Lavoro €/ora</label><input id="q-tariffa" type="number" inputmode="decimal" step="0.5"></div>
+        <div><label>Scarto %</label><input id="q-scarto" type="number" inputmode="numeric"></div>
+        <div><label>Ricarico %</label><input id="q-ricarico" type="number" inputmode="numeric"></div>
+      </div>
+      <div class="mut" style="font-size:12px;margin-top:6px">Costo stampante = corrente + usura (ugello, piatto, ricambi). Scarto = filamento in più per prove e stampe fallite.</div>
+      <button id="q-salva-tariffe" style="width:100%;margin-top:10px">Salva come tariffe predefinite</button>
+    </div>
+    <div class="card" id="q-risultato"></div>
+  </section>
+
   <!-- IMPOSTAZIONI -->
   <section id="v-imp" class="hidden">
     <div class="card">
@@ -186,7 +259,8 @@
   <button data-v="nuove"><span>➕</span>Nuove</button>
   <button data-v="scan"><span>📷</span>Scansiona</button>
   <button data-v="mag"><span>📦</span>Magazzino</button>
-  <button data-v="imp"><span>⚙️</span>Impostazioni</button>
+  <button data-v="prezzi"><span>💶</span>Prezzi</button>
+  <button data-v="prev"><span>🧮</span>Preventivo</button>
 </nav>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
@@ -285,12 +359,14 @@ $('avviso').onclick = () => { clearTimeout(timerAvviso); $('avviso').classList.r
 
 function show(v) {
   msg('');
-  for (const s of ['login', 'nuove', 'scan', 'mag', 'imp']) $('v-' + s).classList.toggle('hidden', s !== v);
+  for (const s of ['login', 'nuove', 'scan', 'mag', 'prezzi', 'prev', 'imp']) $('v-' + s).classList.toggle('hidden', s !== v);
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
   if (v === 'scan') startScan(); else stopScan();
   if (v === 'mag') loadMag();
   if (v === 'nuove') loadSuggest();
   if (v === 'imp') drawImp();
+  if (v === 'prezzi') loadPrezzi();
+  if (v === 'prev') loadPreventivo();
 }
 
 // ---------- impostazioni (salvate nel profilo dell'account: valgono su telefono e Mac) ----------
@@ -300,7 +376,7 @@ let SOGLIE = { ...SOGLIE_BASE };
 let MIEI = [], MIEI_SALVATI = false;
 const stessoNome = (a, b) => a.toLowerCase() === b.toLowerCase();
 async function salvaMiei() {
-  const { error } = await db.auth.updateUser({ data: { soglie: SOGLIE, colori: MIEI } });
+  const { error } = await db.auth.updateUser({ data: { soglie: SOGLIE, colori: MIEI, preventivo: PREV } });
   if (error) msg('Non sono riuscito a salvare i tuoi colori: ' + esc(error.message), false);
   MIEI_SALVATI = true; drawColori();
 }
@@ -331,7 +407,7 @@ function anteprimaImp() {
 }
 $('i-verde').oninput = $('i-rossa').oninput = anteprimaImp;
 async function salvaImp(nuove) {
-  const { error } = await db.auth.updateUser({ data: { soglie: nuove, colori: MIEI } });
+  const { error } = await db.auth.updateUser({ data: { soglie: nuove, colori: MIEI, preventivo: PREV } });
   if (error) return msg('Errore nel salvataggio: ' + esc(error.message), false);
   SOGLIE = nuove; drawImp(); msg('Impostazioni salvate.');
 }
@@ -348,11 +424,13 @@ async function boot() {
   const logged = !!data.session;
   $('nav').classList.toggle('hidden', !logged);
   $('logout').classList.toggle('hidden', !logged);
+  $('impbtn').classList.toggle('hidden', !logged);
   $('stampa').classList.toggle('hidden', !(logged && MAC));
   if (!logged) return show('login');
   const meta = data.session.user.user_metadata || {};
   SOGLIE = { ...SOGLIE_BASE, ...(meta.soglie || {}) };
   MIEI_SALVATI = Array.isArray(meta.colori); MIEI = MIEI_SALVATI ? [...meta.colori] : [];
+  PREV = { ...PREV_BASE, ...(meta.preventivo || {}) };
   drawColori();
   const code = new URLSearchParams(location.search).get('b') || location.hash.slice(1);
   if (/^B\d+$/i.test(code)) { show('scan'); stopScan(); openSpool(code.toUpperCase()); }
@@ -362,6 +440,7 @@ $('l-go').onclick = async () => {
   const { error } = await db.auth.signInWithPassword({ email: $('l-email').value.trim(), password: $('l-pass').value });
   if (error) msg('Accesso non riuscito: ' + esc(error.message), false); else boot();
 };
+$('impbtn').onclick = () => show('imp');
 $('logout').onclick = async () => { await db.auth.signOut(); boot(); };
 $('stampa').onclick = () => { location.href = 'bobine://stampa'; };
 
@@ -709,6 +788,192 @@ async function openSpool(id) {
   });
   on('d-riattiva', () => upd({ stato: 'attiva', peso_rimasto: b.peso_iniziale }, 'Bobina riattivata.'));
 }
+
+
+// ---------- prezzi e preventivo: dati comuni ----------
+let ACQ = [];   // tutte le bobine (anche finite) con materiale, colore, marca, prezzo, data
+const euro = v => '€ ' + Number(v).toFixed(2).replace('.', ',');
+const euroKg = b => b.prezzo == null ? null : Number(b.prezzo) * 1000 / (b.peso_iniziale || 1000);
+async function caricaAcquisti() {
+  const { data, error } = await db.from('bobine').select('id,materiale,colore,finitura,marca,prezzo,peso_iniziale,creata_il').order('creata_il');
+  if (error) { msg('Errore: ' + esc(error.message), false); return false; }
+  ACQ = data || []; return true;
+}
+const distinti = (righe, k) => [...new Set(righe.map(r => r[k]).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'it'));
+function riempiSelect(id, valori, tutti) {
+  const sel = $(id), prima = sel.value;
+  sel.innerHTML = `<option value="">${tutti}</option>` + valori.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
+  sel.value = valori.includes(prima) ? prima : '';
+}
+
+// ---------- scheda Prezzi ----------
+let PER = 'marca';
+async function loadPrezzi() {
+  if (!(await caricaAcquisti())) return;
+  riempiSelect('p-mat', distinti(ACQ, 'materiale'), 'Tutti');
+  riempiSelect('p-marca', distinti(ACQ, 'marca'), 'Tutte');
+  riempiSelect('p-col', distinti(ACQ, 'colore'), 'Tutti');
+  drawPrezzi();
+}
+['p-mat', 'p-marca', 'p-col'].forEach(id => $(id).onchange = drawPrezzi);
+$('p-per').onclick = e => { const b = e.target.closest('[data-p]'); if (b) { PER = b.dataset.p; drawPrezzi(); } };
+
+function drawPrezzi() {
+  const f = { materiale: $('p-mat').value, marca: $('p-marca').value, colore: $('p-col').value };
+  const filtrate = ACQ.filter(b => Object.entries(f).every(([k, v]) => !v || b[k] === v));
+  const conPrezzo = filtrate.filter(b => b.prezzo != null);
+  const senza = filtrate.length - conPrezzo.length;
+  const kg = conPrezzo.map(euroKg);
+  const media = kg.length ? kg.reduce((s, v) => s + v, 0) / kg.length : null;
+
+  $('p-stat').innerHTML = kg.length ? [
+    ['Media', euro(media) + '/kg'], ['Bobine con prezzo', kg.length],
+    ['Più economica', euro(Math.min(...kg)) + '/kg'], ['Più cara', euro(Math.max(...kg)) + '/kg'],
+  ].map(([l, v]) => `<div class="stat"><div class="mut">${l}</div><b>${v}</b></div>`).join('')
+    : '<div class="mut">Nessuna bobina con prezzo per questo filtro.</div>';
+  $('p-senza').textContent = senza ? `${senza} ${senza === 1 ? 'bobina non ha' : 'bobine non hanno'} il prezzo: puoi aggiungerlo dalla scheda della bobina.` : '';
+
+  // confronto per marca / materiale / colore
+  const nomi = { marca: 'Marca', materiale: 'Materiale', colore: 'Colore' };
+  $('p-per').innerHTML = Object.entries(nomi).map(([k, n]) => `<button class="chip ${k === PER ? 'on' : ''}" data-p="${k}" style="padding:6px 12px;font-size:13px">${n}</button>`).join('');
+  const gruppi = {};
+  for (const b of conPrezzo) (gruppi[b[PER] || '(non indicata)'] ??= []).push(euroKg(b));
+  const righe = Object.entries(gruppi).map(([n, v]) => ({ n, media: v.reduce((s, x) => s + x, 0) / v.length, min: Math.min(...v), max: Math.max(...v), q: v.length }))
+    .sort((a, b) => a.media - b.media);
+  const top = Math.max(...righe.map(r => r.max), 1);
+  $('p-gruppi').innerHTML = righe.length ? righe.map(r => `
+    <div class="pg">
+      <div class="pg-n">${PER === 'colore' ? pallino(r.n) : ''}${esc(r.n)}</div>
+      <div class="pg-bar"><div style="width:${100 * r.media / top}%"></div></div>
+      <div class="pg-v"><b>${euro(r.media)}</b><div class="mut">${r.q} × ${r.min !== r.max ? '· ' + r.min.toFixed(0) + '–' + r.max.toFixed(0) : ''}</div></div>
+    </div>`).join('') : '<div class="mut">Nessun dato.</div>';
+
+  // acquisti: le bobine registrate insieme contano come un acquisto
+  const acquisti = [];
+  for (const b of conPrezzo) {
+    const k = [b.creata_il, b.materiale, b.colore, b.finitura, b.marca, b.prezzo].join('|'), u = acquisti.at(-1);
+    if (u && u.k === k) u.q++; else acquisti.push({ k, b, q: 1 });
+  }
+  $('p-acquisti').innerHTML = acquisti.length ? [...acquisti].reverse().map(({ b, q }) => `
+    <div class="ev"><span style="min-width:64px;white-space:nowrap;color:var(--mut);font-size:13px">${new Date(b.creata_il).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: '2-digit' })}</span>
+    <span>${pallino(b.colore)}${esc(b.materiale)} ${esc(b.colore)}${b.marca ? ' <span class="mut">· ' + esc(b.marca) + '</span>' : ''}${q > 1 ? ' <span class="mut">×' + q + '</span>' : ''}</span>
+    <b style="margin-left:auto;white-space:nowrap">${euro(euroKg(b))}</b></div>`).join('') : '<div class="mut">Nessun acquisto con prezzo.</div>';
+
+  drawGrafico(acquisti, media);
+}
+
+// grafico: un punto per acquisto (data → €/kg), linea tratteggiata = media. Tocca un punto per i dettagli.
+function drawGrafico(acquisti, media) {
+  const box = $('p-grafico');
+  const giorni = new Set(acquisti.map(a => a.b.creata_il.slice(0, 10)));
+  if (giorni.size < 2) { box.innerHTML = '<div class="mut">Il grafico comparirà quando avrai acquisti registrati in giorni diversi.</div>'; return; }
+  const W = box.clientWidth || 320, H = 190, L = 44, R = 12, T = 12, B = 26;
+  const t = acquisti.map(a => +new Date(a.b.creata_il)), v = acquisti.map(a => euroKg(a.b));
+  const t0 = Math.min(...t), t1 = Math.max(...t), vMax = Math.max(...v) * 1.15;
+  const X = x => L + (W - L - R) * (x - t0) / (t1 - t0 || 1), Y = y => T + (H - T - B) * (1 - y / vMax);
+  const passo = vMax > 40 ? 20 : vMax > 20 ? 10 : 5, tacche = [];
+  for (let y = 0; y <= vMax; y += passo) tacche.push(y);
+  const data = ms => new Date(ms).toLocaleDateString('it-IT', { month: 'short', year: '2-digit' });
+  box.innerHTML = `<svg width="${W}" height="${H}" style="display:block;overflow:visible">
+    ${tacche.map(y => `<line x1="${L}" x2="${W - R}" y1="${Y(y)}" y2="${Y(y)}" stroke="var(--line)"/><text x="${L - 6}" y="${Y(y) + 4}" text-anchor="end" font-size="11" fill="var(--mut)">€${y}</text>`).join('')}
+    <text x="${L}" y="${H - 6}" font-size="11" fill="var(--mut)">${data(t0)}</text>
+    <text x="${W - R}" y="${H - 6}" font-size="11" fill="var(--mut)" text-anchor="end">${data(t1)}</text>
+    <line x1="${L}" x2="${W - R}" y1="${Y(media)}" y2="${Y(media)}" stroke="var(--mut)" stroke-dasharray="4 4"/>
+    <text x="${L + 4}" y="${Y(media) + 14}" font-size="11" fill="var(--mut)" stroke="var(--card)" stroke-width="3" paint-order="stroke">media ${euro(media)}</text>
+    ${acquisti.map((a, i) => `<circle cx="${X(t[i])}" cy="${Y(v[i])}" r="5" fill="var(--pri)" stroke="var(--card)" stroke-width="2"/>
+      <circle cx="${X(t[i])}" cy="${Y(v[i])}" r="16" fill="transparent" data-i="${i}" style="cursor:pointer"/>`).join('')}
+  </svg><div id="p-tip" class="tip hidden"></div>`;
+  box.querySelector('svg').onclick = e => {
+    const i = e.target.dataset?.i, tip = $('p-tip');
+    if (i == null) return tip.classList.add('hidden');
+    const { b, q } = acquisti[i];
+    tip.innerHTML = `<b>${euro(v[i])}/kg</b><br>${esc(b.materiale)} ${esc(b.colore)}${b.marca ? ' · ' + esc(b.marca) : ''}${q > 1 ? ' ×' + q : ''}<br><span class="mut">${fData(b.creata_il)}</span>`;
+    tip.classList.remove('hidden');
+    tip.style.left = Math.min(Math.max(X(t[i]) - 80, 0), W - 160) + 'px';
+    tip.style.top = Math.max(Y(v[i]) - tip.offsetHeight - 12, 0) + 'px';
+  };
+}
+
+// ---------- scheda Preventivo ----------
+const PREV_BASE = { macchina: 0.30, tariffa: 20, scarto: 10, ricarico: 30 };
+let PREV = { ...PREV_BASE };
+async function loadPreventivo() {
+  for (const k of Object.keys(PREV_BASE)) if ($('q-' + k).value === '') $('q-' + k).value = PREV[k];
+  if (!(await caricaAcquisti())) return;
+  riempiSelect('q-mat', distinti(ACQ, 'materiale'), 'Scegli…');
+  aggiornaFiltriPrev();
+}
+function aggiornaFiltriPrev() {
+  const m = ACQ.filter(b => !$('q-mat').value || b.materiale === $('q-mat').value);
+  riempiSelect('q-marca', distinti(m, 'marca'), 'Tutte');
+  riempiSelect('q-col', distinti(m.filter(b => !$('q-marca').value || b.marca === $('q-marca').value), 'colore'), 'Tutti');
+  prezzoDaiTuoiAcquisti();
+}
+// prezzo €/kg medio delle tue bobine che corrispondono alla scelta
+function prezzoDaiTuoiAcquisti() {
+  const f = { materiale: $('q-mat').value, marca: $('q-marca').value, colore: $('q-col').value };
+  const kg = ACQ.filter(b => b.prezzo != null && Object.entries(f).every(([k, v]) => !v || b[k] === v)).map(euroKg);
+  if (!f.materiale) { $('q-eurokg-info').textContent = 'Scegli un materiale per usare il prezzo medio delle tue bobine.'; return calcola(); }
+  if (kg.length) {
+    $('q-eurokg').value = (kg.reduce((s, v) => s + v, 0) / kg.length).toFixed(2);
+    $('q-eurokg-info').textContent = `Media delle tue ${kg.length} ${kg.length === 1 ? 'bobina' : 'bobine'} (da ${euro(Math.min(...kg))} a ${euro(Math.max(...kg))}/kg). Puoi cambiarlo.`;
+  } else {
+    $('q-eurokg').value = '';
+    $('q-eurokg-info').textContent = 'Nessuna tua bobina di questo tipo ha il prezzo: scrivilo tu.';
+  }
+  calcola();
+}
+$('q-mat').onchange = () => { $('q-marca').value = ''; $('q-col').value = ''; aggiornaFiltriPrev(); };
+$('q-marca').onchange = () => { $('q-col').value = ''; aggiornaFiltriPrev(); };
+$('q-col').onchange = prezzoDaiTuoiAcquisti;
+['q-eurokg', 'q-grammi', 'q-sh', 'q-sm', 'q-lh', 'q-lm', 'q-pezzi', 'q-macchina', 'q-tariffa', 'q-scarto', 'q-ricarico'].forEach(id => $(id).oninput = calcola);
+
+const nv = id => Math.max(0, Number($(id).value) || 0);
+const durata = min => { const h = Math.floor(min / 60), m = Math.round(min % 60); return (h ? h + ' h ' : '') + (m || !h ? m + ' min' : ''); };
+let TESTO_CLIENTE = '';
+function calcola() {
+  const pezzi = Math.max(1, Math.round(nv('q-pezzi')));
+  const g = nv('q-grammi') * pezzi, minStampa = (nv('q-sh') * 60 + nv('q-sm')) * pezzi, minLavoro = nv('q-lh') * 60 + nv('q-lm');
+  const eurokg = nv('q-eurokg');
+  if (!g && !minStampa && !minLavoro) { $('q-risultato').innerHTML = '<div class="mut">Inserisci grammi e tempi per vedere il preventivo.</div>'; return; }
+  const materiale = g / 1000 * eurokg * (1 + nv('q-scarto') / 100);
+  const macchina = minStampa / 60 * nv('q-macchina');
+  const lavoro = minLavoro / 60 * nv('q-tariffa');
+  const costo = materiale + macchina + lavoro;
+  const prezzo = costo * (1 + nv('q-ricarico') / 100);
+  const tondo = Math.ceil(prezzo);
+  const voce = (n, d, v) => `<div class="ev"><span>${n}<div class="mut" style="font-size:12px">${d}</div></span><b style="margin-left:auto">${euro(v)}</b></div>`;
+  const mat = [$('q-mat').value, $('q-col').value].filter(Boolean).join(' ');
+  $('q-risultato').innerHTML = `
+    <b>Preventivo</b>${pezzi > 1 ? ` <span class="mut">per ${pezzi} pezzi</span>` : ''}
+    ${voce('Materiale', `${Math.round(g)} g × ${euro(eurokg)}/kg + ${nv('q-scarto')}% scarto`, materiale)}
+    ${voce('Stampante', `${durata(minStampa)} × ${euro(nv('q-macchina'))}/h`, macchina)}
+    ${voce('Lavoro', `${durata(minLavoro)} × ${euro(nv('q-tariffa'))}/h`, lavoro)}
+    ${voce('Costo totale', 'quanto ti costa', costo)}
+    ${voce('Ricarico', `+${nv('q-ricarico')}%`, prezzo - costo)}
+    <div class="row" style="margin-top:12px;align-items:baseline"><span>Prezzo al cliente</span>
+      <span class="big" style="margin-left:auto">${euro(tondo)}</span></div>
+    <div class="mut" style="text-align:right;font-size:12px">calcolato ${euro(prezzo)}, arrotondato all'euro${pezzi > 1 ? ` · ${euro(tondo / pezzi)} al pezzo` : ''}</div>
+    ${!eurokg && g ? '<div class="mut" style="color:var(--bad);margin-top:6px">⚠️ Manca il prezzo del filamento.</div>' : ''}
+    <button class="pri" id="q-copia">📋 Copia testo per il cliente</button>`;
+  TESTO_CLIENTE = `Preventivo stampa 3D\n` +
+    (pezzi > 1 ? `Pezzi: ${pezzi}\n` : '') +
+    (mat ? `Materiale: ${mat}\n` : '') +
+    `Filamento: circa ${Math.round(g)} g\nTempo di stampa: ${durata(minStampa)}\n` +
+    `Prezzo: ${euro(tondo)}` + (pezzi > 1 ? ` (${euro(tondo / pezzi)} al pezzo)` : '');
+  $('q-copia').onclick = async () => {
+    try {
+      if (navigator.share) await navigator.share({ text: TESTO_CLIENTE });
+      else { await navigator.clipboard.writeText(TESTO_CLIENTE); msg('Testo copiato: incollalo nel messaggio al cliente.'); }
+    } catch (e) { if (e.name !== 'AbortError') msg('Non sono riuscito a copiare il testo.', false); }
+  };
+}
+$('q-salva-tariffe').onclick = async () => {
+  PREV = { macchina: nv('q-macchina'), tariffa: nv('q-tariffa'), scarto: nv('q-scarto'), ricarico: nv('q-ricarico') };
+  const { error } = await db.auth.updateUser({ data: { soglie: SOGLIE, colori: MIEI, preventivo: PREV } });
+  if (error) return msg('Errore nel salvataggio: ' + esc(error.message), false);
+  msg('Tariffe salvate: le ritroverai al prossimo preventivo.');
+};
 
 // ---------- magazzino ----------
 $('m-finite').onchange = () => loadMag();
