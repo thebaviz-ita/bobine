@@ -5,11 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#1f6feb">
 <title>Bobine</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Orbitron:wght@600;800&display=swap" rel="stylesheet">
 <style>
   :root { --bg:#f6f7f9; --card:#fff; --txt:#1b1f24; --mut:#6b7280; --pri:#1f6feb; --ok:#1a7f37; --bad:#cf222e; --line:#e3e6ea; }
   @media (prefers-color-scheme: dark) { :root { --bg:#0e1116; --card:#161b22; --txt:#e6edf3; --mut:#8b949e; --line:#30363d; } }
   * { box-sizing:border-box; }
-  body { margin:0; font:16px/1.4 -apple-system, system-ui, Roboto, sans-serif; background:var(--bg); color:var(--txt); padding-bottom:84px; }
+  button, input, select, textarea { font-family:inherit; }
+  header span, .big, .dry-t { font-family:'Orbitron', 'JetBrains Mono', monospace; letter-spacing:0.02em; }
+  body { margin:0; font:15px/1.45 'JetBrains Mono', ui-monospace, Menlo, monospace; letter-spacing:-0.01em; background:var(--bg); color:var(--txt); padding-bottom:84px; }
   header { padding:14px 16px; font-weight:700; font-size:20px; display:flex; justify-content:space-between; align-items:center; }
   header button { font-size:13px; padding:6px 10px; }
   main { padding:0 16px; max-width:560px; margin:0 auto; }
@@ -312,7 +317,8 @@ async function openSpool(id) {
       <button id="d-altra" style="margin-left:auto">📷 Altra</button>
     </div>
 
-    <details style="margin-top:8px"><summary>Storico</summary>${storia.map(evento).join('')}</details>`;
+    <details style="margin-top:8px"><summary>Storico</summary>${storia.map(evento).join('')}</details>
+    <button class="bad" id="d-elimina" style="width:100%;margin-top:20px;font-size:14px;background:none">🗑 Elimina bobina (inserita per errore)</button>`;
 
   const upd = async (patch, testo) => {
     const { error } = await db.from('bobine').update(patch).eq('id', b.id);
@@ -329,6 +335,12 @@ async function openSpool(id) {
   on('d-ristampa', () => upd({ da_stampare: true }, 'QR rimesso in coda di stampa.'));
   on('d-altra', () => { msg(''); startScan(); });
   on('d-finita', () => confirm('Segnare la bobina come finita?') && upd({ stato: 'finita' }, 'Bobina segnata come finita.'));
+  on('d-elimina', async () => {
+    if (!confirm(`Eliminare definitivamente ${b.id} (${b.materiale} ${b.colore})?\n\nSparisce anche il suo storico. Se la bobina è solo finita, usa invece "Segna finita".`)) return;
+    const { error } = await db.from('bobine').delete().eq('id', b.id);
+    if (error) return msg('Errore: ' + esc(error.message), false);
+    show('mag'); msg(`Bobina ${esc(b.id)} eliminata.`);
+  });
   on('d-riattiva', () => upd({ stato: 'attiva', peso_rimasto: b.peso_iniziale }, 'Bobina riattivata.'));
 }
 
