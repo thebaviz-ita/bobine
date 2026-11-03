@@ -61,6 +61,8 @@
   .grp { display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--line); }
   .grp:last-child { border:0; }
   .item { cursor:pointer; }
+  .item.ultima { background:#1f6feb14; border-left:3px solid var(--pri); padding-left:8px; color:var(--txt); }
+  .nuova { font-size:11px; font-weight:700; color:var(--pri); white-space:nowrap; }
   .stats { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:14px; }
   .stat { background:var(--bg); border-radius:10px; padding:8px 10px; font-size:15px; }
   .stat .mut { font-size:12px; }
@@ -644,11 +646,15 @@ async function openSpool(id) {
     <label>Finitura <span style="font-size:12px">(tocca per cambiarla, di nuovo per toglierla)</span></label>
     <div class="chips" id="d-fin"></div>
 
-    <label>Posizione</label>
-    <input id="d-pos" value="${esc(b.posizione || '')}" placeholder="dove è riposta" autocomplete="off">
+    <div class="grid2">
+      <div><label>Marca</label><input id="d-marca" value="${esc(b.marca || '')}" placeholder="non indicata" autocomplete="off"></div>
+      <div><label>Posizione</label><input id="d-pos" value="${esc(b.posizione || '')}" placeholder="dove è riposta" autocomplete="off"></div>
+      <div><label>Prezzo € / bobina</label><input id="d-prezzo" type="number" inputmode="decimal" step="0.01" value="${b.prezzo ?? ''}" placeholder="non indicato"></div>
+      <div><label>Diametro mm</label><input id="d-diam" type="number" inputmode="decimal" step="0.01" value="${b.diametro ?? ''}" placeholder="1.75"></div>
+    </div>
     <label>Note</label>
     <textarea id="d-note" rows="2" placeholder="es. stampa bene a 215 °C">${esc(b.note || '')}</textarea>
-    <button id="d-salvainfo" style="width:100%;margin-top:8px">Salva posizione e note</button>
+    <button id="d-salvainfo" style="width:100%;margin-top:8px">Salva marca, posizione, prezzo e note</button>
 
     <div class="row" style="margin-top:16px">
       ${b.stato === 'finita' ? '<button id="d-riattiva">Riattiva</button>' : '<button class="bad" id="d-finita">Segna finita</button>'}
@@ -669,7 +675,7 @@ async function openSpool(id) {
   const on = (id, f) => { if ($(id)) $(id).onclick = f; };
   drawFin('d-fin', b.finitura);
   $('d-fin').onclick = e => { const x = e.target.closest('[data-f]'); if (x) { const f = b.finitura === x.dataset.f ? null : x.dataset.f; upd({ finitura: f }, f ? `Finitura: ${f.toLowerCase()}.` : 'Finitura tolta.'); } };
-  suggerisci('d-pos', 'posizione'); suggerisci('d-col', 'tuttiColori'); if (!SUG.caricati) loadSuggest();
+  suggerisci('d-pos', 'posizione'); suggerisci('d-marca', 'marca'); suggerisci('d-col', 'tuttiColori'); if (!SUG.caricati) loadSuggest();
   on('d-col-ok', () => {
     let c = $('d-col').value.trim(); if (!c) return msg('Scrivi il colore.', false, 'd-col');
     const std = COLORI.find(([n]) => stessoNome(n, c)) || MIEI.filter(n => stessoNome(n, c)).map(n => [n])[0]; if (std) c = std[0];
@@ -682,7 +688,14 @@ async function openSpool(id) {
   on('d-apri', () => upd({ aperta_il: new Date().toISOString() }, 'Segnata come aperta.'));
   on('d-secca', () => upd({ essiccata_il: new Date().toISOString() }, 'Essiccazione registrata.'));
   $('d-secca-data').onchange = e => { if (e.target.value) upd({ essiccata_il: new Date(e.target.value + 'T12:00').toISOString() }, 'Essiccazione registrata.'); };
-  on('d-salvainfo', () => upd({ posizione: $('d-pos').value.trim() || null, note: $('d-note').value.trim() || null }, 'Salvato.'));
+  on('d-salvainfo', () => {
+    const num = id => { const v = $(id).value.trim(); return v === '' ? null : Number(v); };
+    const prezzo = num('d-prezzo'), diametro = num('d-diam') ?? 1.75;
+    if (prezzo !== null && !(prezzo >= 0)) return msg('Prezzo non valido.', false, 'd-prezzo');
+    if (!(diametro > 0 && diametro < 10)) return msg('Diametro non valido (di solito 1.75).', false, 'd-diam');
+    upd({ marca: $('d-marca').value.trim() || null, posizione: $('d-pos').value.trim() || null, prezzo, diametro,
+          note: $('d-note').value.trim() || null }, 'Dati salvati.').then(() => { SUG.caricati = false; });
+  });
   on('d-ristampa', () => {
     const piccola = $('d-piccola').checked;
     upd({ da_stampare: true, stampa_piccola: piccola }, piccola ? 'QR piccolo messo in coda di stampa.' : 'QR rimesso in coda di stampa.');
@@ -700,8 +713,10 @@ async function openSpool(id) {
 
 // ---------- magazzino ----------
 $('m-finite').onchange = () => loadMag();
+// data dell'ultima registrazione nel gruppo (le bobine registrate insieme hanno la stessa data)
+const ultimaDi = list => list.reduce((m, b) => (b.creata_il > m ? b.creata_il : m), '');
 async function loadMag() {
-  let q = db.from('bobine').select('id,materiale,colore,finitura,peso_rimasto,stato,aperta_il,usata_il,essiccata_il').order('materiale').order('colore').order('finitura');
+  let q = db.from('bobine').select('id,materiale,colore,finitura,marca,peso_rimasto,stato,creata_il,aperta_il,usata_il,essiccata_il').order('materiale').order('colore').order('finitura').order('id');
   if (!$('m-finite').checked) q = q.eq('stato', 'attiva');
   const { data, error } = await q;
   if (error) return msg('Errore: ' + esc(error.message), false);
@@ -715,7 +730,7 @@ async function loadMag() {
     <div style="font-weight:700;margin-top:8px">${esc(mat)}</div>
     ${Object.entries(cols).map(([col, list]) => `
       <details><summary class="grp" style="color:inherit;margin:0"><span>${pallino(col.split('|')[0])}${esc(col.split('|')[0])}${col.includes('|') ? ' <span class="mut">' + esc(col.split('|')[1].toLowerCase()) + '</span>' : ''}</span><span>${list.filter(b => b.stato === 'attiva').length} × · ${(list.reduce((s, b) => s + b.peso_rimasto, 0) / 1000).toFixed(2)} kg</span></summary>
-      ${list.map(b => `<div class="grp item mut" data-id="${b.id}"><span>${b.id}${b.stato === 'finita' ? ' (finita)' : ' ' + ({ ok: '✅', warn: '💧', mut: '🔒' })[asciutta(b).k]}</span><span>${b.peso_rimasto} g ›</span></div>`).join('')}
+      ${list.map(b => `<div class="grp item mut ${list.length > 1 && b.creata_il === ultimaDi(list) ? 'ultima' : ''}" data-id="${b.id}"><span>${b.id}${b.stato === 'finita' ? ' (finita)' : ' ' + ({ ok: '✅', warn: '💧', mut: '🔒' })[asciutta(b).k]}${b.marca ? ' · ' + esc(b.marca) : ''}${list.length > 1 && b.creata_il === ultimaDi(list) ? ' <span class="nuova">🆕 ultima</span>' : ''}</span><span>${b.peso_rimasto} g ›</span></div>`).join('')}
       </details>`).join('')}`).join('') : '<div class="mut">Nessuna bobina.</div>';
 }
 $('m-list').onclick = e => { const it = e.target.closest('.item'); if (it) { show('scan'); stopScan(); openSpool(it.dataset.id); } };
