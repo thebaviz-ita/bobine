@@ -50,6 +50,19 @@
   #dopo { position:fixed; inset:0; z-index:60; background:#0008; display:flex; align-items:flex-end; justify-content:center; padding:16px; padding-bottom:calc(16px + env(safe-area-inset-bottom)); }
   #dopo .card { width:100%; max-width:528px; margin:0; animation:sali .2s; }
   #dopo button { width:100%; margin-top:10px; }
+  /* anteprima della coda di stampa */
+  #coda { position:fixed; inset:0; z-index:60; background:#0008; display:flex; align-items:flex-start; justify-content:center; padding:16px; overflow-y:auto; }
+  #coda > .card { width:100%; max-width:620px; margin:0 0 16px; animation:sali .2s; }
+  .foglio-box { display:flex; gap:14px; align-items:flex-start; padding:12px 0; border-top:1px solid var(--line); }
+  .foglio { flex:none; width:96px; aspect-ratio:2/3; background:#fff; border:1px solid #999; border-radius:4px; display:grid; grid-template-columns:1fr 1fr; padding:2px; gap:1px; }
+  .foglio div { border:1px dashed #bbb; display:flex; align-items:center; gap:2px; padding:1px; font:7px/1 ui-monospace, monospace; color:#000; overflow:hidden; }
+  .foglio i { flex:none; background:repeating-conic-gradient(#000 0 25%, #fff 0 50%) 0 0/4px 4px; }
+  .foglio.norm i { width:16px; height:16px; } .foglio.picc i { width:6px; height:6px; }
+  .foglio.picc div { font-size:5px; }
+  .coda-righe { flex:1; min-width:0; }
+  .coda-r { display:flex; align-items:center; gap:6px; padding:5px 0; font-size:14px; }
+  .coda-r span { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .coda-r button { padding:5px 9px; font-size:12px; flex:none; }
   @keyframes sali { from { transform:translateY(30px); opacity:0; } }
   @keyframes scuoti { 25% { transform:translateX(-6px); } 50% { transform:translateX(6px); } 75% { transform:translateX(-3px); } }
   .codes { font-family:ui-monospace, Menlo, monospace; font-size:15px; }
@@ -247,6 +260,12 @@
 </main>
 
 <div id="avviso" role="alert"></div>
+<div id="coda" class="hidden"><div class="card">
+  <div class="row"><b style="font-size:18px">🖨 Da stampare</b><button id="coda-chiudi" style="margin-left:auto;padding:6px 12px">✕</button></div>
+  <div class="mut" id="coda-info" style="margin-top:4px"></div>
+  <div id="coda-fogli" style="margin-top:8px"></div>
+  <button class="pri" id="coda-invia">Invia alla stampante</button>
+</div></div>
 <div id="dopo" class="hidden"><div class="card">
   <div style="font-size:18px;font-weight:700">✅ <span id="dopo-cosa"></span></div>
   <div class="codes" id="dopo-codici" style="margin-top:6px"></div>
@@ -443,7 +462,62 @@ $('l-go').onclick = async () => {
 };
 $('impbtn').onclick = () => show('imp');
 $('logout').onclick = async () => { await db.auth.signOut(); boot(); };
-$('stampa').onclick = () => { location.href = 'bobine://stampa'; };
+// 🖨 Stampa QR: prima mostra cosa c'è in coda (si può togliere o cambiare formato), poi apre il programma di stampa
+$('stampa').onclick = apriCoda;
+$('coda-chiudi').onclick = () => $('coda').classList.add('hidden');
+$('coda').onclick = e => { if (e.target.id === 'coda') $('coda').classList.add('hidden'); };
+$('coda-invia').onclick = () => { $('coda').classList.add('hidden'); location.href = 'bobine://stampa'; };
+async function apriCoda() {
+  const { data, error } = await db.from('bobine').select('id,materiale,colore,finitura,marca,stampa_piccola').eq('da_stampare', true).order('id');
+  if (error) return msg('Errore: ' + esc(error.message), false);
+  // stessi fogli del programma di stampa: prima le normali (8 per foglio), poi le piccole (20 per foglio)
+  const fogli = [];
+  for (const piccola of [false, true]) {
+    const tipo = data.filter(b => !!b.stampa_piccola === piccola), n = piccola ? 20 : 8;
+    for (let i = 0; i < tipo.length; i += n) fogli.push({ piccola, bobine: tipo.slice(i, i + n) });
+  }
+  // stesse bobine (materiale+colore+finitura+marca) in coda più volte: probabile doppione
+  const conta = {};
+  const chiave = b => [b.materiale, b.colore, b.finitura, b.marca].join('|');
+  for (const b of data) conta[chiave(b)] = (conta[chiave(b)] || 0) + 1;
+  const nome = b => `${esc(b.materiale)} ${esc(b.colore)}${b.finitura ? ' ' + esc(b.finitura.toLowerCase()) : ''}`;
+  $('coda-info').textContent = data.length
+    ? `${data.length} ${data.length === 1 ? 'etichetta' : 'etichette'} su ${fogli.length} ${fogli.length === 1 ? 'foglio' : 'fogli'} da 10×15 cm. Togli quelle che non servono prima di stampare.`
+    : 'Non c\'è niente da stampare. Dal programma potrai comunque ristampare l\'ultimo foglio.';
+  $('coda-fogli').innerHTML = fogli.map((f, k) => `
+    <div class="foglio-box">
+      <div>
+        <div class="foglio ${f.piccola ? 'picc' : 'norm'}" style="grid-template-rows:repeat(${f.piccola ? 10 : 4}, 1fr)">
+          ${Array.from({ length: f.piccola ? 20 : 8 }, (_, i) => f.bobine[i] ? `<div><i></i>${esc(f.bobine[i].id)}</div>` : '<div></div>').join('')}
+        </div>
+        <div class="mut" style="font-size:11px;text-align:center;margin-top:4px">Foglio ${k + 1}<br>${f.piccola ? 'piccole' : 'normali'} ${f.bobine.length}/${f.piccola ? 20 : 8}</div>
+      </div>
+      <div class="coda-righe">
+        ${f.bobine.map(b => `<div class="coda-r">
+          <span>${pallino(b.colore)}<b>${esc(b.id)}</b> ${nome(b)}${b.marca ? ' <span class="mut">· ' + esc(b.marca) + '</span>' : ''}${conta[chiave(b)] > 1 ? ' <b style="color:#e8890c" title="ci sono altre bobine uguali in coda">⚠︎</b>' : ''}</span>
+          <button data-formato="${esc(b.id)}" title="cambia formato">${f.piccola ? '→ normale' : '→ piccola'}</button>
+          <button class="bad" data-togli="${esc(b.id)}" title="togli dalla coda">✕</button>
+        </div>`).join('')}
+      </div>
+    </div>`).join('');
+  if (Object.values(conta).some(n => n > 1)) $('coda-info').innerHTML += '<br><b style="color:#e8890c">⚠︎</b> = altre bobine uguali in coda: controlla che non siano doppioni.';
+  $('coda-invia').disabled = false;
+  $('coda-invia').textContent = data.length ? `Invia alla stampante (${data.length})` : 'Apri il programma di stampa';
+  $('coda').classList.remove('hidden');
+}
+$('coda-fogli').onclick = async e => {
+  const t = e.target.closest('[data-togli]'), f = e.target.closest('[data-formato]');
+  if (t) {
+    const { error } = await db.from('bobine').update({ da_stampare: false, stampa_piccola: false }).eq('id', t.dataset.togli);
+    if (error) return msg('Errore: ' + esc(error.message), false);
+    msg(`${t.dataset.togli} tolta dalla coda di stampa (la bobina resta in magazzino).`);
+  } else if (f) {
+    const piccola = f.textContent.includes('piccola');
+    const { error } = await db.from('bobine').update({ stampa_piccola: piccola }).eq('id', f.dataset.formato);
+    if (error) return msg('Errore: ' + esc(error.message), false);
+  } else return;
+  apriCoda();
+};
 
 // ---------- nuove bobine ----------
 function drawChips() {
