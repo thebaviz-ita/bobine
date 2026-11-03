@@ -33,7 +33,7 @@
   details summary { color:var(--pri); margin-top:16px; cursor:pointer; }
   .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:0 10px; }
   nav { position:fixed; bottom:0; left:0; right:0; display:flex; background:var(--card); border-top:1px solid var(--line); padding-bottom:env(safe-area-inset-bottom); }
-  nav button { flex:1; border:0; border-radius:0; background:none; padding:10px 4px 12px; font-size:13px; color:var(--mut); }
+  nav button { flex:1; border:0; border-radius:0; background:none; padding:10px 2px 12px; font-size:12px; color:var(--mut); }
   nav button span { display:block; font-size:22px; }
   nav button.on { color:var(--pri); font-weight:600; }
   .msg { padding:12px; border-radius:10px; margin-bottom:14px; }
@@ -125,12 +125,30 @@
     <div class="card" id="m-list"></div>
     <label style="margin-top:0"><input type="checkbox" id="m-finite" style="width:auto"> mostra anche le finite</label>
   </section>
+
+  <!-- IMPOSTAZIONI -->
+  <section id="v-imp" class="hidden">
+    <div class="card">
+      <b>Colore della barra "rimasto"</b>
+      <div class="mut" style="margin-top:4px">Decidi tu quando la barra di una bobina diventa verde, arancione o rossa.</div>
+      <label>🟢 Verde sopra il</label>
+      <div class="row"><input id="i-verde" type="number" inputmode="numeric" min="1" max="100"><span>%</span></div>
+      <label>🔴 Rossa sotto il</label>
+      <div class="row"><input id="i-rossa" type="number" inputmode="numeric" min="0" max="99"><span>%</span></div>
+      <div class="mut" style="margin-top:10px" id="i-spiega"></div>
+      <div class="bar" style="height:16px;margin-top:10px"><div id="i-anteprima" style="width:100%"></div></div>
+      <div class="row mut" style="justify-content:space-between;font-size:12px"><span>vuota 0%</span><span>piena 100%</span></div>
+      <button class="pri" id="i-salva">Salva impostazioni</button>
+      <button id="i-default" style="width:100%;margin-top:8px">Ripristina valori iniziali (60% / 25%)</button>
+    </div>
+  </section>
 </main>
 
 <nav id="nav" class="hidden">
   <button data-v="nuove"><span>➕</span>Nuove</button>
   <button data-v="scan"><span>📷</span>Scansiona</button>
   <button data-v="mag"><span>📦</span>Magazzino</button>
+  <button data-v="imp"><span>⚙️</span>Impostazioni</button>
 </nav>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
@@ -210,12 +228,39 @@ function msg(text, ok = true) {
 
 function show(v) {
   msg('');
-  for (const s of ['login', 'nuove', 'scan', 'mag']) $('v-' + s).classList.toggle('hidden', s !== v);
+  for (const s of ['login', 'nuove', 'scan', 'mag', 'imp']) $('v-' + s).classList.toggle('hidden', s !== v);
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
   if (v === 'scan') startScan(); else stopScan();
   if (v === 'mag') loadMag();
   if (v === 'nuove') loadSuggest();
+  if (v === 'imp') drawImp();
 }
+
+// ---------- impostazioni (salvate nel profilo dell'account: valgono su telefono e Mac) ----------
+const SOGLIE_BASE = { verde: 60, rossa: 25 };
+let SOGLIE = { ...SOGLIE_BASE };
+const coloreBarra = pct => pct > SOGLIE.verde ? '#2da44e' : pct >= SOGLIE.rossa ? '#e8890c' : '#d1242f';
+function drawImp() {
+  $('i-verde').value = SOGLIE.verde; $('i-rossa').value = SOGLIE.rossa; anteprimaImp();
+}
+function anteprimaImp() {
+  const v = +$('i-verde').value, r = +$('i-rossa').value;
+  if (!(r >= 0 && v <= 100 && r < v)) { $('i-spiega').textContent = '⚠️ La soglia rossa deve essere più bassa di quella verde.'; return; }
+  $('i-spiega').innerHTML = `Verde sopra il <b>${v}%</b> · arancione dal <b>${v}%</b> al <b>${r}%</b> · rossa sotto il <b>${r}%</b>`;
+  $('i-anteprima').style.background = `linear-gradient(to right, #d1242f 0 ${r}%, #e8890c ${r}% ${v}%, #2da44e ${v}% 100%)`;
+}
+$('i-verde').oninput = $('i-rossa').oninput = anteprimaImp;
+async function salvaImp(nuove) {
+  const { error } = await db.auth.updateUser({ data: { soglie: nuove } });
+  if (error) return msg('Errore nel salvataggio: ' + esc(error.message), false);
+  SOGLIE = nuove; drawImp(); msg('Impostazioni salvate.');
+}
+$('i-salva').onclick = () => {
+  const v = Math.round(+$('i-verde').value), r = Math.round(+$('i-rossa').value);
+  if (!(r >= 0 && v <= 100 && r < v)) return msg('La soglia rossa deve essere più bassa di quella verde (tra 0 e 100).', false);
+  salvaImp({ verde: v, rossa: r });
+};
+$('i-default').onclick = () => salvaImp({ ...SOGLIE_BASE });
 
 // ---------- accesso ----------
 async function boot() {
@@ -225,6 +270,7 @@ async function boot() {
   $('logout').classList.toggle('hidden', !logged);
   $('stampa').classList.toggle('hidden', !(logged && MAC));
   if (!logged) return show('login');
+  SOGLIE = { ...SOGLIE_BASE, ...(data.session.user.user_metadata?.soglie || {}) };
   const code = new URLSearchParams(location.search).get('b') || location.hash.slice(1);
   if (/^B\d+$/i.test(code)) { show('scan'); stopScan(); openSpool(code.toUpperCase()); }
   else show('nuove');
@@ -457,7 +503,7 @@ async function openSpool(id) {
     <div class="mut">${esc(b.id)}${b.stato === 'finita' ? ' · <b style="color:var(--bad)">FINITA</b>' : ''}</div>
     <div class="big">${pallino(b.colore, 20)}${esc(b.materiale)} ${esc(b.colore)}</div>
     <div class="mut">${extra}</div>
-    <div class="bar"><div style="width:${pct}%;background:${pct > 60 ? '#2da44e' : pct > 25 ? '#e8890c' : '#d1242f'}"></div></div>
+    <div class="bar"><div style="width:${pct}%;background:${coloreBarra(pct)}"></div></div>
     <div><b>${b.peso_rimasto} g</b> rimasti su ${b.peso_iniziale} g (${pct}%)</div>
 
     <div class="stats">${stat.map(([i, l, v]) => `<div class="stat"><div class="mut">${i} ${l}</div><b>${v}</b></div>`).join('')}</div>
