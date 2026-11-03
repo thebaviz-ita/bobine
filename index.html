@@ -278,7 +278,8 @@ const FINITURE = ['Opaco', 'Lucido'];
 let finitura = null;   // facoltativa: si tocca di nuovo per toglierla
 const drawFin = (box, scelta) => { $(box).innerHTML = FINITURE.map(f => `<button type="button" class="chip ${f === scelta ? 'on' : ''}" data-f="${f}">${f}</button>`).join(''); };
 let materiale = 'PLA', colore = null, stream = null, scanning = false;
-const MAC = /Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints < 2;
+// computer con il programma di stampa (Mac o Windows): lì compare il pulsante 🖨 Stampa QR
+const MAC = (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints < 2) || /Windows/.test(navigator.userAgent);
 const COLORI = [['Nero', '#1c1c1c'], ['Bianco', '#f4f4f2'], ['Grigio', '#7d7f82'], ['Argento', '#b9bdc3'],
   ['Rosso', '#c62828'], ['Arancione', '#ef6c00'], ['Giallo', '#f9c623'], ['Oro', '#c39b2c'],
   ['Verde', '#2e7d32'], ['Verde chiaro', '#8bc34a'], ['Blu', '#1a4fb5'], ['Azzurro', '#4fb3e8'],
@@ -606,7 +607,7 @@ $('n-salva').onclick = async () => {
   if (error) return msg('Errore nel salvataggio: ' + esc(error.message), false);
   const cosa = `${data.length} ${data.length === 1 ? 'bobina' : 'bobine'} ${esc(mat)} ${esc(colore)}${finitura ? ' ' + finitura.toLowerCase() : ''}`;
   ricordaColore(colore);
-  const codici = data.map(r => r.id).join(' · '), stampa = MAC ? 'Premi 🖨 Stampa QR in alto per stamparli.' : 'Stampa i QR dal Mac con 🖨 Stampa QR.';
+  const codici = data.map(r => r.id).join(' · '), stampa = MAC ? 'Premi 🖨 Stampa QR in alto per stamparli.' : 'Stampa i QR dal computer (Mac o Windows) con 🖨 Stampa QR.';
   // riepilogo con i codici: resta in alto finché non cambi scheda
   $('msg').innerHTML = `<div class="msg ok">Registrate ${cosa}.<br><span class="codes">${codici}</span><br>${stampa}</div>`;
   // finestra: un'altra bobina oppure magazzino
