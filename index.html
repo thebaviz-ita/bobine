@@ -38,6 +38,15 @@
   nav button.on { color:var(--pri); font-weight:600; }
   .msg { padding:12px; border-radius:10px; margin-bottom:14px; }
   .msg.ok { background:#1a7f3722; color:var(--ok); } .msg.err { background:#cf222e22; color:var(--bad); }
+  /* avviso che compare davanti, sopra la barra in basso */
+  #avviso { position:fixed; left:16px; right:16px; bottom:calc(84px + env(safe-area-inset-bottom)); max-width:528px; margin:0 auto; z-index:50;
+    display:flex; gap:10px; align-items:flex-start; padding:14px 16px; border-radius:14px; color:#fff; font-size:15px; font-weight:600;
+    box-shadow:0 8px 28px #0006; transform:translateY(20px); opacity:0; pointer-events:none; transition:transform .2s, opacity .2s; }
+  #avviso.vis { transform:none; opacity:1; pointer-events:auto; }
+  #avviso.ok { background:#1a7f37; } #avviso.err { background:#cf222e; }
+  #avviso .x { margin-left:auto; opacity:.8; font-size:18px; line-height:1; }
+  .campo-errore { outline:3px solid var(--bad) !important; outline-offset:3px; border-radius:10px; animation:scuoti .4s; }
+  @keyframes scuoti { 25% { transform:translateX(-6px); } 50% { transform:translateX(6px); } 75% { transform:translateX(-3px); } }
   .codes { font-family:ui-monospace, Menlo, monospace; font-size:15px; }
   video { width:100%; border-radius:12px; background:#000; aspect-ratio:1; object-fit:cover; }
   .big { font-size:28px; font-weight:700; }
@@ -146,6 +155,7 @@
   </section>
 </main>
 
+<div id="avviso" role="alert"></div>
 <nav id="nav" class="hidden">
   <button data-v="nuove"><span>➕</span>Nuove</button>
   <button data-v="scan"><span>📷</span>Scansiona</button>
@@ -226,10 +236,26 @@ function coloreDaNome(nome) {
 }
 const pallino = (nome, px) => { const h = coloreDaNome(nome); return `<i class="pallino" style="${px ? `width:${px}px;height:${px}px;` : ''}${h ? tinta(h) : 'background:transparent;border-style:dashed'}"></i>`; };
 
-function msg(text, ok = true) {
-  $('msg').innerHTML = text ? `<div class="msg ${ok ? 'ok' : 'err'}">${text}</div>` : '';
-  if (text) window.scrollTo(0, 0);
+// avvisi: compaiono davanti all'utente (in basso), senza spostare la pagina.
+// campo = id del campo da evidenziare in rosso e portare in vista
+let timerAvviso;
+function msg(text, ok = true, campo) {
+  $('msg').innerHTML = '';
+  const a = $('avviso'); clearTimeout(timerAvviso);
+  if (!text) return a.classList.remove('vis');
+  a.className = ok ? 'ok' : 'err';
+  a.innerHTML = `<span>${ok ? '✅' : '⚠️'}</span><span>${text}</span><span class="x">✕</span>`;
+  requestAnimationFrame(() => a.classList.add('vis'));
+  timerAvviso = setTimeout(() => a.classList.remove('vis'), ok ? 4000 : 6000);
+  navigator.vibrate?.(ok ? 30 : [60, 60, 60]);
+  if (campo && $(campo)) {
+    const c = $(campo);
+    c.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    c.classList.remove('campo-errore'); void c.offsetWidth; c.classList.add('campo-errore');
+    setTimeout(() => c.classList.remove('campo-errore'), 3000);
+  }
 }
+$('avviso').onclick = () => { clearTimeout(timerAvviso); $('avviso').classList.remove('vis'); };
 
 function show(v) {
   msg('');
@@ -262,7 +288,7 @@ async function salvaImp(nuove) {
 }
 $('i-salva').onclick = () => {
   const v = Math.round(+$('i-verde').value), r = Math.round(+$('i-rossa').value);
-  if (!(r >= 0 && v <= 100 && r < v)) return msg('La soglia rossa deve essere più bassa di quella verde (tra 0 e 100).', false);
+  if (!(r >= 0 && v <= 100 && r < v)) return msg('La soglia rossa deve essere più bassa di quella verde (tra 0 e 100).', false, 'i-rossa');
   salvaImp({ verde: v, rossa: r });
 };
 $('i-default').onclick = () => salvaImp({ ...SOGLIE_BASE });
@@ -404,9 +430,9 @@ suggerisci('n-col-altro', 'colore');
 $('n-salva').onclick = async () => {
   const mat = materiale === 'Altro' ? $('n-mat-altro').value.trim() : materiale;
   const qta = parseInt($('n-qta').value, 10);
-  if (!mat) return msg('Scrivi il materiale.', false);
-  if (!colore) return msg('Scegli il colore.', false);
-  if (!(qta >= 1 && qta <= 100)) return msg('Quantità non valida.', false);
+  if (!mat) return msg('Manca il materiale: scrivilo nel campo "Altro materiale".', false, 'n-mat-altro');
+  if (!colore) return msg('Manca il colore: sceglilo dalla lista o scrivilo a mano.', false, 'n-col');
+  if (!(qta >= 1 && qta <= 100)) return msg('Quantità non valida: deve essere tra 1 e 100.', false, 'n-qta');
   const num = v => v === '' ? null : Number(v);
   const riga = {
     materiale: mat, colore,
@@ -420,7 +446,10 @@ $('n-salva').onclick = async () => {
   const { data, error } = await db.from('bobine').insert(Array.from({ length: qta }, () => ({ ...riga }))).select('id');
   $('n-salva').disabled = false;
   if (error) return msg('Errore nel salvataggio: ' + esc(error.message), false);
-  msg(`Registrate ${data.length} bobine ${esc(mat)} ${esc(colore)}${finitura ? ' ' + finitura.toLowerCase() : ''}.<br><span class="codes">${data.map(r => r.id).join(' · ')}</span><br>${MAC ? 'Premi 🖨 Stampa QR in alto per stamparli.' : 'Stampa i QR dal Mac con 🖨 Stampa QR.'}`);
+  const cosa = `${data.length} ${data.length === 1 ? 'bobina' : 'bobine'} ${esc(mat)} ${esc(colore)}${finitura ? ' ' + finitura.toLowerCase() : ''}`;
+  msg(`Registrate ${cosa}.`);
+  // riepilogo con i codici: resta in alto finché non cambi scheda
+  $('msg').innerHTML = `<div class="msg ok">Registrate ${cosa}.<br><span class="codes">${data.map(r => r.id).join(' · ')}</span><br>${MAC ? 'Premi 🖨 Stampa QR in alto per stamparli.' : 'Stampa i QR dal Mac con 🖨 Stampa QR.'}</div>`;
   colore = null; $('n-col-altro').value = ''; drawColori(); $('n-col-sel').textContent = ''; $('n-foto-box').classList.add('hidden'); $('n-qta').value = 1;
   loadSuggest();
 };
@@ -556,7 +585,7 @@ async function openSpool(id) {
   $('d-fin').onclick = e => { const x = e.target.closest('[data-f]'); if (x) { const f = b.finitura === x.dataset.f ? null : x.dataset.f; upd({ finitura: f }, f ? `Finitura: ${f.toLowerCase()}.` : 'Finitura tolta.'); } };
   suggerisci('d-pos', 'posizione'); suggerisci('d-col', 'tuttiColori'); if (!SUG.caricati) loadSuggest();
   on('d-col-ok', () => {
-    let c = $('d-col').value.trim(); if (!c) return msg('Scrivi il colore.', false);
+    let c = $('d-col').value.trim(); if (!c) return msg('Scrivi il colore.', false, 'd-col');
     const std = COLORI.find(([n]) => n.toLowerCase() === c.toLowerCase()); if (std) c = std[0];
     if (c === b.colore) return;
     if (confirm(`Cambiare il colore di ${b.id} da "${b.colore}" a "${c}"?`)) upd({ colore: c }, 'Colore cambiato.').then(() => { SUG.caricati = false; });
