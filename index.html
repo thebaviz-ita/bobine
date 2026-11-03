@@ -656,6 +656,8 @@ async function openSpool(id) {
       <button id="d-altra" style="margin-left:auto">📷 Altra</button>
     </div>
 
+    <label style="margin-top:8px;font-size:14px"><input type="checkbox" id="d-piccola" style="width:auto;margin-right:6px">Ristampa in formato piccolo (su una riga)</label>
+
     <details style="margin-top:8px"><summary>Storico</summary>${storia.map(evento).join('')}</details>
     <button class="bad" id="d-elimina" style="width:100%;margin-top:20px;font-size:14px;background:none">🗑 Elimina bobina (inserita per errore)</button>`;
 
@@ -681,7 +683,10 @@ async function openSpool(id) {
   on('d-secca', () => upd({ essiccata_il: new Date().toISOString() }, 'Essiccazione registrata.'));
   $('d-secca-data').onchange = e => { if (e.target.value) upd({ essiccata_il: new Date(e.target.value + 'T12:00').toISOString() }, 'Essiccazione registrata.'); };
   on('d-salvainfo', () => upd({ posizione: $('d-pos').value.trim() || null, note: $('d-note').value.trim() || null }, 'Salvato.'));
-  on('d-ristampa', () => upd({ da_stampare: true }, 'QR rimesso in coda di stampa.'));
+  on('d-ristampa', () => {
+    const piccola = $('d-piccola').checked;
+    upd({ da_stampare: true, stampa_piccola: piccola }, piccola ? 'QR piccolo messo in coda di stampa.' : 'QR rimesso in coda di stampa.');
+  });
   on('d-altra', () => { msg(''); startScan(); });
   on('d-finita', () => confirm('Segnare la bobina come finita?') && upd({ stato: 'finita' }, 'Bobina segnata come finita.'));
   on('d-elimina', async () => {
