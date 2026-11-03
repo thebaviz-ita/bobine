@@ -42,6 +42,15 @@
   .grp { display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--line); }
   .grp:last-child { border:0; }
   .item { cursor:pointer; }
+  .stats { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:14px; }
+  .stat { background:var(--bg); border-radius:10px; padding:8px 10px; font-size:15px; }
+  .stat .mut { font-size:12px; }
+  .dry { border-radius:12px; padding:12px; margin-top:16px; border:1px solid var(--line); }
+  .dry.ok { background:#1a7f3718; border-color:#1a7f3755; } .dry.warn { background:#d2992218; border-color:#d2992266; } .dry.mut { background:var(--bg); }
+  .dry-t { font-weight:700; font-size:17px; } .dry-s { font-size:13px; color:var(--mut); }
+  textarea { width:100%; font:inherit; font-size:16px; padding:10px 12px; border:1px solid var(--line); border-radius:10px; background:var(--bg); color:var(--txt); }
+  .ev { display:flex; gap:10px; padding:8px 0; border-bottom:1px solid var(--line); font-size:15px; }
+  .ev .mut { margin-left:auto; } .ev-i { width:22px; text-align:center; }
   .hidden { display:none !important; }
 </style>
 </head>
@@ -219,13 +228,55 @@ function stopScan() {
 }
 $('s-cerca').onclick = () => { const c = $('s-code').value.trim().toUpperCase(); if (c) { stopScan(); openSpool(/^\d+$/.test(c) ? 'B' + c.padStart(4, '0') : c); } };
 
+// essiccazione indicativa per materiale (dai produttori più comuni)
+const ESSICCAZIONE = { 'PLA': '45–50 °C · 4–6 h', 'PLA+': '45–55 °C · 4–6 h', 'PETG': '60–65 °C · 4–6 h',
+  'ABS': '70–80 °C · 4 h', 'ASA': '70–80 °C · 4 h', 'TPU': '50–55 °C · 6–8 h', 'PA': '70–80 °C · 8–12 h', 'NYLON': '70–80 °C · 8–12 h', 'PC': '70–80 °C · 6–8 h' };
+const giorno = 864e5;
+const fData = d => new Date(d).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' });
+const fFa = d => { const g = Math.floor((Date.now() - new Date(d)) / giorno); return g <= 0 ? 'oggi' : g === 1 ? 'ieri' : `${g} giorni fa`; };
+const giorni = (a, b) => Math.max(1, Math.round((new Date(b) - new Date(a)) / giorno));
+
+// stato di essiccazione: asciutta, da essiccare, sigillata
+function asciutta(b) {
+  if (b.essiccata_il && (!b.usata_il || new Date(b.essiccata_il) >= new Date(b.usata_il)))
+    return { k: 'ok', t: 'Asciutta', s: `essiccata ${fFa(b.essiccata_il)} · ${fData(b.essiccata_il)}` };
+  if (!b.aperta_il && !b.essiccata_il) return { k: 'mut', t: 'Sigillata', s: 'mai aperta' };
+  return { k: 'warn', t: 'Da essiccare', s: b.essiccata_il ? `usata dopo l'ultima essiccazione (${fData(b.essiccata_il)})` : 'aperta e mai essiccata' };
+}
+
+const ICONE = { peso: '⚖️', aperta: '📦', essiccata: '💨', finita: '🏁', riattivata: '↩️' };
+function evento(m) {
+  const t = { peso: `${m.peso_prima} → ${m.peso_dopo} g` + (m.peso_prima > m.peso_dopo ? ` (−${m.peso_prima - m.peso_dopo} g)` : ''),
+    aperta: 'Aperta', essiccata: 'Essiccata', finita: 'Finita', riattivata: 'Riattivata', registrata: 'Registrata' }[m.tipo] || m.tipo;
+  return `<div class="ev"><span class="ev-i">${ICONE[m.tipo] || '🆕'}</span><span>${t}</span><span class="mut">${fData(m.creato_il)}</span></div>`;
+}
+
 async function openSpool(id) {
-  const { data: b, error } = await db.from('bobine').select('*').eq('id', id).maybeSingle();
+  const [{ data: b, error }, { data: mov }] = await Promise.all([
+    db.from('bobine').select('*').eq('id', id).maybeSingle(),
+    db.from('movimenti').select('*').eq('bobina_id', id).order('creato_il', { ascending: false }).limit(30),
+  ]);
   if (error) return msg('Errore: ' + esc(error.message), false);
   if (!b) { msg(`Bobina ${esc(id)} non trovata.`, false); return startScan(); }
   $('s-cam').classList.add('hidden');
   const pct = Math.round(100 * b.peso_rimasto / (b.peso_iniziale || 1000));
-  const extra = [b.marca, b.diametro && b.diametro + ' mm', b.prezzo != null && '€ ' + Number(b.prezzo).toFixed(2), b.posizione && '📍 ' + b.posizione].filter(Boolean).map(esc).join(' · ');
+  const extra = [b.marca, b.diametro && b.diametro + ' mm', b.prezzo != null && '€ ' + Number(b.prezzo).toFixed(2)].filter(Boolean).map(esc).join(' · ');
+  const as = asciutta(b);
+  const consiglio = ESSICCAZIONE[String(b.materiale).toUpperCase()];
+
+  // numeri utili
+  const stat = [];
+  stat.push(['📅', 'Registrata', fData(b.creata_il)]);
+  if (b.aperta_il) stat.push(['📦', 'Aperta', `${fData(b.aperta_il)}`]);
+  if (b.finita_il) stat.push(['🏁', 'Finita in', `${giorni(b.aperta_il || b.creata_il, b.finita_il)} giorni`]);
+  else if (b.aperta_il && b.peso_rimasto < b.peso_iniziale) {
+    const gg = giorni(b.aperta_il, Date.now()), media = (b.peso_iniziale - b.peso_rimasto) / gg;
+    stat.push(['📉', 'Consumo medio', `${Math.round(media)} g/giorno`]);
+    stat.push(['⏳', 'Finisce tra', `~${Math.round(b.peso_rimasto / media)} giorni`]);
+  }
+  if (b.prezzo != null && b.stato === 'attiva') stat.push(['💶', 'Valore rimasto', '€ ' + (b.prezzo * b.peso_rimasto / b.peso_iniziale).toFixed(2)]);
+
+  const storia = [...(mov || []), { tipo: 'registrata', creato_il: b.creata_il }];
   const det = $('s-det');
   det.classList.remove('hidden');
   det.innerHTML = `
@@ -234,31 +285,57 @@ async function openSpool(id) {
     <div class="mut">${extra}</div>
     <div class="bar"><div style="width:${pct}%"></div></div>
     <div><b>${b.peso_rimasto} g</b> rimasti su ${b.peso_iniziale} g (${pct}%)</div>
+
+    <div class="stats">${stat.map(([i, l, v]) => `<div class="stat"><div class="mut">${i} ${l}</div><b>${v}</b></div>`).join('')}</div>
+
+    ${b.stato === 'attiva' ? `
     <label>Grammi rimasti</label>
     <div class="row"><input id="d-peso" type="number" inputmode="numeric" placeholder="${b.peso_rimasto}"><button id="d-ok">Salva</button></div>
     <div class="row" style="margin-top:8px"><input id="d-usati" type="number" inputmode="numeric" placeholder="oppure grammi usati"><button id="d-sub">−</button></div>
+    ${b.aperta_il ? '' : '<button id="d-apri" style="width:100%;margin-top:10px">📦 L\'ho aperta oggi</button>'}` : ''}
+
+    <div class="dry ${as.k}">
+      <div class="row"><div><div class="dry-t">${as.k === 'ok' ? '✅' : as.k === 'warn' ? '💧' : '🔒'} ${as.t}</div><div class="dry-s">${as.s}</div></div></div>
+      ${consiglio ? `<div class="dry-s" style="margin-top:6px">Consigliato per ${esc(b.materiale)}: ${consiglio} (indicativo, verifica sulla bobina)</div>` : ''}
+      <div class="row" style="margin-top:10px"><button id="d-secca" style="flex:1">💨 Essiccata oggi</button><input id="d-secca-data" type="date" style="width:auto" title="altra data"></div>
+    </div>
+
+    <label>Posizione</label>
+    <input id="d-pos" value="${esc(b.posizione || '')}" placeholder="dove è riposta" list="posizioni">
+    <label>Note</label>
+    <textarea id="d-note" rows="2" placeholder="es. stampa bene a 215 °C">${esc(b.note || '')}</textarea>
+    <button id="d-salvainfo" style="width:100%;margin-top:8px">Salva posizione e note</button>
+
     <div class="row" style="margin-top:16px">
       ${b.stato === 'finita' ? '<button id="d-riattiva">Riattiva</button>' : '<button class="bad" id="d-finita">Segna finita</button>'}
       <button id="d-ristampa">Ristampa QR</button>
       <button id="d-altra" style="margin-left:auto">📷 Altra</button>
-    </div>`;
+    </div>
+
+    <details style="margin-top:8px"><summary>Storico</summary>${storia.map(evento).join('')}</details>`;
+
   const upd = async (patch, testo) => {
     const { error } = await db.from('bobine').update(patch).eq('id', b.id);
     if (error) return msg('Errore: ' + esc(error.message), false);
     await openSpool(b.id); msg(testo);
   };
-  $('d-ok').onclick = () => { const g = parseInt($('d-peso').value, 10); if (g >= 0) upd({ peso_rimasto: g }, 'Peso aggiornato.'); };
-  $('d-sub').onclick = () => { const g = parseInt($('d-usati').value, 10); if (g > 0) upd({ peso_rimasto: Math.max(0, b.peso_rimasto - g) }, 'Peso aggiornato.'); };
-  $('d-ristampa').onclick = () => upd({ da_stampare: true }, 'QR rimesso in coda di stampa.');
-  $('d-altra').onclick = () => { msg(''); startScan(); };
-  if ($('d-finita')) $('d-finita').onclick = () => confirm('Segnare la bobina come finita?') && upd({ stato: 'finita' }, 'Bobina segnata come finita.');
-  if ($('d-riattiva')) $('d-riattiva').onclick = () => upd({ stato: 'attiva', peso_rimasto: b.peso_iniziale }, 'Bobina riattivata.');
+  const on = (id, f) => { if ($(id)) $(id).onclick = f; };
+  on('d-ok', () => { const g = parseInt($('d-peso').value, 10); if (g >= 0) upd({ peso_rimasto: Math.min(g, b.peso_iniziale) }, 'Peso aggiornato.'); });
+  on('d-sub', () => { const g = parseInt($('d-usati').value, 10); if (g > 0) upd({ peso_rimasto: Math.max(0, b.peso_rimasto - g) }, 'Peso aggiornato.'); });
+  on('d-apri', () => upd({ aperta_il: new Date().toISOString() }, 'Segnata come aperta.'));
+  on('d-secca', () => upd({ essiccata_il: new Date().toISOString() }, 'Essiccazione registrata.'));
+  $('d-secca-data').onchange = e => { if (e.target.value) upd({ essiccata_il: new Date(e.target.value + 'T12:00').toISOString() }, 'Essiccazione registrata.'); };
+  on('d-salvainfo', () => upd({ posizione: $('d-pos').value.trim() || null, note: $('d-note').value.trim() || null }, 'Salvato.'));
+  on('d-ristampa', () => upd({ da_stampare: true }, 'QR rimesso in coda di stampa.'));
+  on('d-altra', () => { msg(''); startScan(); });
+  on('d-finita', () => confirm('Segnare la bobina come finita?') && upd({ stato: 'finita' }, 'Bobina segnata come finita.'));
+  on('d-riattiva', () => upd({ stato: 'attiva', peso_rimasto: b.peso_iniziale }, 'Bobina riattivata.'));
 }
 
 // ---------- magazzino ----------
 $('m-finite').onchange = () => loadMag();
 async function loadMag() {
-  let q = db.from('bobine').select('id,materiale,colore,peso_rimasto,stato').order('materiale').order('colore');
+  let q = db.from('bobine').select('id,materiale,colore,peso_rimasto,stato,aperta_il,usata_il,essiccata_il').order('materiale').order('colore');
   if (!$('m-finite').checked) q = q.eq('stato', 'attiva');
   const { data, error } = await q;
   if (error) return msg('Errore: ' + esc(error.message), false);
@@ -272,7 +349,7 @@ async function loadMag() {
     <div style="font-weight:700;margin-top:8px">${esc(mat)}</div>
     ${Object.entries(cols).map(([col, list]) => `
       <details><summary class="grp" style="color:inherit;margin:0"><span>${esc(col)}</span><span>${list.filter(b => b.stato === 'attiva').length} × · ${(list.reduce((s, b) => s + b.peso_rimasto, 0) / 1000).toFixed(2)} kg</span></summary>
-      ${list.map(b => `<div class="grp item mut" data-id="${b.id}"><span>${b.id}${b.stato === 'finita' ? ' (finita)' : ''}</span><span>${b.peso_rimasto} g ›</span></div>`).join('')}
+      ${list.map(b => `<div class="grp item mut" data-id="${b.id}"><span>${b.id}${b.stato === 'finita' ? ' (finita)' : ' ' + ({ ok: '✅', warn: '💧', mut: '🔒' })[asciutta(b).k]}</span><span>${b.peso_rimasto} g ›</span></div>`).join('')}
       </details>`).join('')}`).join('') : '<div class="mut">Nessuna bobina.</div>';
 }
 $('m-list').onclick = e => { const it = e.target.closest('.item'); if (it) { show('scan'); stopScan(); openSpool(it.dataset.id); } };
