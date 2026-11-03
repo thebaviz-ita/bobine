@@ -64,6 +64,10 @@
   .coda-r { display:flex; align-items:center; gap:6px; padding:5px 0; font-size:14px; }
   .coda-r span { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .coda-r button { padding:5px 9px; font-size:12px; flex:none; }
+  .coda-r span.formato { flex:none; display:inline-flex; overflow:visible; }
+  .formato button { border-radius:0; margin-left:-1px; color:var(--mut); }
+  .formato button:first-child { border-radius:8px 0 0 8px; } .formato button:last-child { border-radius:0 8px 8px 0; }
+  .formato button.on { background:var(--pri); border-color:var(--pri); color:#fff; font-weight:700; }
   @keyframes sali { from { transform:translateY(30px); opacity:0; } }
   @keyframes scuoti { 25% { transform:translateX(-6px); } 50% { transform:translateX(6px); } 75% { transform:translateX(-3px); } }
   .codes { font-family:ui-monospace, Menlo, monospace; font-size:15px; }
@@ -506,7 +510,7 @@ async function apriCoda() {
       <div class="coda-righe">
         ${f.bobine.map(b => `<div class="coda-r">
           <span>${pallino(b.colore)}<b>${esc(b.id)}</b> ${nome(b)}${b.marca ? ' <span class="mut">· ' + esc(b.marca) + '</span>' : ''}${conta[chiave(b)] > 1 ? ' <b style="color:#e8890c" title="ci sono altre bobine uguali in coda">⚠︎</b>' : ''}</span>
-          <button data-formato="${esc(b.id)}" title="cambia formato">${b.stampa_piccola ? '→ normale' : '→ piccola'}</button>
+          <span class="formato">${[['normale', false], ['piccola', true]].map(([n, v]) => `<button data-formato="${esc(b.id)}" data-piccola="${v}" class="${!!b.stampa_piccola === v ? 'on' : ''}">${n}</button>`).join('')}</span>
           <button class="bad" data-togli="${esc(b.id)}" title="togli dalla coda">✕</button>
         </div>`).join('')}
       </div>
@@ -523,7 +527,8 @@ $('coda-fogli').onclick = async e => {
     if (error) return msg('Errore: ' + esc(error.message), false);
     msg(`${t.dataset.togli} tolta dalla coda di stampa (la bobina resta in magazzino).`);
   } else if (f) {
-    const piccola = f.textContent.includes('piccola');
+    const piccola = f.dataset.piccola === 'true';
+    if (piccola === f.classList.contains('on')) return;   // è già in quel formato
     const { error } = await db.from('bobine').update({ stampa_piccola: piccola }).eq('id', f.dataset.formato);
     if (error) return msg('Errore: ' + esc(error.message), false);
   } else return;
@@ -826,7 +831,7 @@ async function openSpool(id) {
       <button id="d-altra" style="margin-left:auto">📷 Altra</button>
     </div>
 
-    <label style="margin-top:8px;font-size:14px"><input type="checkbox" id="d-piccola" style="width:auto;margin-right:6px">Ristampa in formato piccolo (su una riga)</label>
+    <button id="d-ristampa-piccola" style="width:100%;margin-top:8px;font-size:14px">Ristampa QR piccolo (su una riga)</button>
 
     <details style="margin-top:8px"><summary>Storico</summary>${storia.map(evento).join('')}</details>
     <button class="bad" id="d-elimina" style="width:100%;margin-top:20px;font-size:14px;background:none">🗑 Elimina bobina (inserita per errore)</button>`;
@@ -861,8 +866,10 @@ async function openSpool(id) {
           note: $('d-note').value.trim() || null }, 'Dati salvati.').then(() => { SUG.caricati = false; });
   });
   on('d-ristampa', () => {
-    const piccola = $('d-piccola').checked;
-    upd({ da_stampare: true, stampa_piccola: piccola }, piccola ? 'QR piccolo messo in coda di stampa.' : 'QR rimesso in coda di stampa.');
+    upd({ da_stampare: true, stampa_piccola: false }, 'QR normale messo in coda di stampa.');
+  });
+  on('d-ristampa-piccola', () => {
+    upd({ da_stampare: true, stampa_piccola: true }, 'QR piccolo messo in coda di stampa.');
   });
   on('d-altra', () => { msg(''); startScan(); });
   on('d-finita', () => confirm('Segnare la bobina come finita?') && upd({ stato: 'finita' }, 'Bobina segnata come finita.'));
