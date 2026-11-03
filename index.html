@@ -153,7 +153,55 @@ const COLORI = [['Nero', '#1c1c1c'], ['Bianco', '#f4f4f2'], ['Grigio', '#7d7f82'
   ['Trasparente', 'trasp'], ['Multicolore', 'multi']];
 const tinta = h => h === 'trasp' ? 'background:repeating-conic-gradient(#ccc 0 25%,#fff 0 50%) 0 0/8px 8px'
   : h === 'multi' ? 'background:conic-gradient(#e53935,#fb8c00,#fdd835,#43a047,#1e88e5,#8e24aa,#e53935)' : 'background:' + h;
-const pallino = nome => { const c = COLORI.find(([n]) => n === nome); return `<i class="pallino" style="${c ? tinta(c[1]) : 'background:transparent;border-style:dashed'}"></i>`; };
+// --- riconoscimento del colore dal nome scritto a mano ---
+const NOMI_COLORE = {
+  'nero': '#1c1c1c', 'bianco': '#f4f4f2', 'grigio': '#7d7f82', 'argento': '#b9bdc3', 'rosso': '#c62828',
+  'arancione': '#ef6c00', 'arancio': '#ef6c00', 'giallo': '#f9c623', 'oro': '#c39b2c', 'dorato': '#c39b2c',
+  'verde': '#2e7d32', 'blu': '#1a4fb5', 'azzurro': '#4fb3e8', 'viola': '#6a2c91', 'rosa': '#f06292',
+  'marrone': '#6d4c41', 'beige': '#d8c6a3',
+  'lime': '#a4e000', 'verde lime': '#a4e000', 'verde fluo': '#39ff14', 'verde neon': '#39ff14', 'verde acqua': '#3fbfa8',
+  'acquamarina': '#5fd9c0', 'turchese': '#1cb5b5', 'ciano': '#00bcd4', 'menta': '#98e0b8', 'verde menta': '#98e0b8',
+  'smeraldo': '#1b9e5a', 'verde militare': '#4b5320', 'militare': '#4b5320', 'oliva': '#6b7a2a', 'verde oliva': '#6b7a2a',
+  'verde bosco': '#1f4d2b', 'verde mela': '#8dc63f', 'pistacchio': '#a8c97f', 'salvia': '#9caf88', 'petrolio': '#0f5a63',
+  'verde petrolio': '#0f5a63', 'ottanio': '#0f5a63', 'blu notte': '#14213d', 'blu navy': '#1b2a4a', 'navy': '#1b2a4a',
+  'blu elettrico': '#1f51ff', 'cobalto': '#0047ab', 'blu cobalto': '#0047ab', 'celeste': '#9dd3f0', 'azzurro cielo': '#87ceeb',
+  'carta da zucchero': '#8fb3d9', 'avio': '#6e8fb3', 'indaco': '#3f3fa0', 'lavanda': '#b7a3e0', 'lilla': '#c8a2c8',
+  'glicine': '#c9a0dc', 'porpora': '#7b1f5c', 'magenta': '#d81b8c', 'fucsia': '#e91e8c', 'rosa antico': '#c08081',
+  'rosa fluo': '#ff3fa4', 'rosa neon': '#ff3fa4', 'salmone': '#f08a6c', 'corallo': '#ff6f61', 'pesca': '#ffb48a',
+  'bordeaux': '#6d0f1f', 'bordò': '#6d0f1f', 'bordo': '#6d0f1f', 'vinaccia': '#5e1a2b', 'ciliegia': '#b0102b',
+  'cremisi': '#b0153a', 'scarlatto': '#e0301e', 'mattone': '#a0432a', 'terracotta': '#c45c3b', 'ruggine': '#a14a1d',
+  'rame': '#b8733a', 'bronzo': '#8c6a2f', 'ambra': '#ffb300', 'senape': '#c9a227', 'ocra': '#c8962c',
+  'limone': '#fff44f', 'giallo limone': '#fff44f', 'giallo fluo': '#e6ff00', 'giallo neon': '#e6ff00',
+  'arancione fluo': '#ff7a00', 'arancio fluo': '#ff7a00', 'crema': '#f3e9cf', 'avorio': '#f6f0dc', 'panna': '#f5efe0',
+  'sabbia': '#d6c29a', 'kaki': '#b5a26a', 'cachi': '#b5a26a', 'nocciola': '#a67b5b', 'cioccolato': '#4e2f1f',
+  'caffè': '#4b3621', 'caffe': '#4b3621', 'tortora': '#a39a8c', 'antracite': '#33363b', 'grafite': '#41454b',
+  'titanio': '#8a8d8f', 'canna di fucile': '#3a3f44', 'naturale': '#e8e2d0', 'legno': '#a07a4e', 'marmo': '#d9d9d4',
+  'carbonio': '#2b2b2b', 'fosforescente': '#d8f5b0', 'glow': '#d8f5b0',
+  'trasparente': 'trasp', 'multicolore': 'multi', 'arcobaleno': 'multi', 'rainbow': 'multi',
+};
+const CHIAVI_COLORE = Object.keys(NOMI_COLORE).sort((a, b) => b.length - a.length);
+const mixa = (hex, con, q) => '#' + [1, 3, 5].map(i => Math.round(parseInt(hex.slice(i, i + 2), 16) * (1 - q) + con * q).toString(16).padStart(2, '0')).join('');
+const _cv = document.createElement('canvas').getContext('2d');
+function coloreDaNome(nome) {
+  const std = COLORI.find(([n]) => n === nome); if (std) return std[1];
+  const t = String(nome || '').toLowerCase().replace(/[^a-zà-ù0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!t) return null;
+  let hex = null, resto = t;
+  const k = CHIAVI_COLORE.find(k => (' ' + t + ' ').includes(' ' + k + ' '));
+  if (k) { hex = NOMI_COLORE[k]; resto = (' ' + t + ' ').replace(' ' + k + ' ', ' '); }
+  else for (const w of t.split(' ')) {             // nomi inglesi (lime, teal, navy...) riconosciuti dal browser
+    if (w.length < 3 || !CSS.supports('color', w)) continue;
+    _cv.fillStyle = '#000'; _cv.fillStyle = w;
+    if (/^#[0-9a-f]{6}$/.test(_cv.fillStyle)) { hex = _cv.fillStyle; resto = t.replace(w, ' '); break; }
+  }
+  if (!hex || hex[0] !== '#') return hex;
+  const r = ' ' + resto + ' ', ha = (...p) => p.some(x => r.includes(' ' + x + ' '));
+  if (ha('chiaro', 'chiara')) hex = mixa(hex, 255, 0.4);
+  if (ha('scuro', 'scura')) hex = mixa(hex, 0, 0.4);
+  if (ha('pastello')) hex = mixa(hex, 255, 0.55);
+  return hex;
+}
+const pallino = (nome, px) => { const h = coloreDaNome(nome); return `<i class="pallino" style="${px ? `width:${px}px;height:${px}px;` : ''}${h ? tinta(h) : 'background:transparent;border-style:dashed'}"></i>`; };
 
 function msg(text, ok = true) {
   $('msg').innerHTML = text ? `<div class="msg ${ok ? 'ok' : 'err'}">${text}</div>` : '';
@@ -205,7 +253,8 @@ $('n-col').onclick = e => { const b = e.target.closest('[data-c]'); if (b) { col
 $('n-col-altro').addEventListener('input', () => {
   const t = $('n-col-altro').value.trim();
   const std = COLORI.find(([n]) => n.toLowerCase() === t.toLowerCase());
-  colore = std ? std[0] : (t || null); drawColori(); $('n-col-sel').textContent = '';
+  colore = std ? std[0] : (t || null); drawColori();
+  $('n-col-sel').innerHTML = !t || std ? '' : coloreDaNome(t) ? `${pallino(t)}riconosciuto` : 'colore non riconosciuto';
 });
 
 // --- riconoscimento del colore dalla foto (tutto sul telefono, nessun invio) ---
@@ -406,9 +455,9 @@ async function openSpool(id) {
   det.classList.remove('hidden');
   det.innerHTML = `
     <div class="mut">${esc(b.id)}${b.stato === 'finita' ? ' · <b style="color:var(--bad)">FINITA</b>' : ''}</div>
-    <div class="big">${esc(b.materiale)} ${esc(b.colore)}</div>
+    <div class="big">${pallino(b.colore, 20)}${esc(b.materiale)} ${esc(b.colore)}</div>
     <div class="mut">${extra}</div>
-    <div class="bar"><div style="width:${pct}%"></div></div>
+    <div class="bar"><div style="width:${pct}%;background:${pct > 60 ? '#2da44e' : pct > 25 ? '#e8890c' : '#d1242f'}"></div></div>
     <div><b>${b.peso_rimasto} g</b> rimasti su ${b.peso_iniziale} g (${pct}%)</div>
 
     <div class="stats">${stat.map(([i, l, v]) => `<div class="stat"><div class="mut">${i} ${l}</div><b>${v}</b></div>`).join('')}</div>
