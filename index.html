@@ -1362,7 +1362,7 @@ const oraIt = d => new Date(d).toLocaleString('it-IT', { day: 'numeric', month: 
 function postoDaRiga(t, r) {
   const m = MACCHINE.find(m => m.modello === t.modello); if (!m) return null;
   if (!m.ams.length || r.ams >= 254) return m.esterna[0];
-  return m.ams[r.slot]?.[0] || null;
+  return m.ams[r.ams]?.[0] || null;   // 'ams' = numero del posto (0-3); 'slot' a volte è sbagliato
 }
 $('gr-chiudi').onclick = () => $('grammi-f').classList.add('hidden');
 $('st-grammi').onclick = async () => {
