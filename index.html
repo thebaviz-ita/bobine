@@ -128,6 +128,15 @@
   .posto.vuoto .rocc::after { content:'+'; inset:0; background:none; box-shadow:none; display:grid; place-items:center; font-size:22px; color:#9aa4ae; }
   .posto .doppio { color:#ffb340; font-weight:700; }
   .esterne { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:8px; margin-top:10px; padding:0 8px; }
+  #grammi-f { position:fixed; inset:0; z-index:60; background:#0008; display:flex; align-items:flex-start; justify-content:center; padding:16px; overflow-y:auto; }
+  #grammi-f > .card { width:100%; max-width:560px; margin:0 0 16px; animation:sali .2s; }
+  .st-c { border-top:1px solid var(--line); padding:14px 0 6px; }
+  .st-c .avv { font-size:13px; color:#b7791f; margin-top:4px; }
+  .st-r { display:grid; grid-template-columns:minmax(0, 1fr) 78px; gap:6px 8px; align-items:center; margin-top:8px; }
+  .st-r select, .st-r input { font-size:14px; padding:8px; }
+  .st-r .dove { grid-column:1 / -1; font-size:12px; color:var(--mut); margin-bottom:-4px; }
+  .st-b { display:grid; grid-template-columns:2fr 1fr; gap:8px; margin-top:10px; }
+  .st-b button { margin:0; padding:10px; font-size:15px; }
   #posto-f { position:fixed; inset:0; z-index:60; background:#0008; display:flex; align-items:flex-end; justify-content:center; padding:16px; padding-bottom:calc(16px + env(safe-area-inset-bottom)); }
   #posto-f > .card { width:100%; max-width:528px; margin:0; animation:sali .2s; max-height:85vh; overflow-y:auto; }
   .scelta { display:flex; align-items:center; gap:8px; width:100%; text-align:left; padding:10px 12px; margin-top:6px; font-size:14px; }
@@ -286,6 +295,7 @@
 
   <!-- STAMPANTI: quale bobina è montata dove -->
   <section id="v-stamp" class="hidden">
+    <button class="pri" id="st-grammi" style="margin:0 0 12px">⚖️ Aggiorna grammi dalle stampe</button>
     <div class="mut" style="margin:0 4px 10px">Tocca un posto per montare, cambiare o togliere una bobina.</div>
     <div id="st-macchine"></div>
   </section>
@@ -327,6 +337,10 @@
   <div style="margin-top:14px;font-weight:600">Vuoi registrare un'altra bobina?</div>
   <button class="pri" id="dopo-si">➕ Sì, una nuova</button>
   <button id="dopo-no">📦 No, vai al magazzino</button>
+</div></div>
+<div id="grammi-f" class="hidden"><div class="card">
+  <div class="row"><b style="font-size:18px">⚖️ Stampe da scalare</b><button id="gr-chiudi" style="margin-left:auto;padding:6px 12px">✕</button></div>
+  <div id="gr-corpo"></div>
 </div></div>
 <div id="posto-f" class="hidden"><div class="card">
   <div class="row"><b style="font-size:18px" id="po-tit"></b><button id="po-chiudi" style="margin-left:auto;padding:6px 12px">✕</button></div>
@@ -807,9 +821,10 @@ function asciutta(b) {
   return { k: 'warn', t: 'Da essiccare', s: b.essiccata_il ? `usata dopo l'ultima essiccazione (${fData(b.essiccata_il)})` : 'aperta e mai essiccata' };
 }
 
-const ICONE = { peso: '⚖️', aperta: '📦', essiccata: '💨', finita: '🏁', riattivata: '↩️' };
+const ICONE = { stampa: '🖨️', peso: '⚖️', aperta: '📦', essiccata: '💨', finita: '🏁', riattivata: '↩️' };
 function evento(m) {
   const t = { peso: `${m.peso_prima} → ${m.peso_dopo} g` + (m.peso_prima > m.peso_dopo ? ` (−${m.peso_prima - m.peso_dopo} g)` : ''),
+    stampa: `Stampa${m.nota ? ' «' + esc(m.nota) + '»' : ''}: ${m.peso_prima} → ${m.peso_dopo} g (−${m.peso_prima - m.peso_dopo} g)`,
     aperta: 'Aperta', essiccata: 'Essiccata', finita: 'Finita', riattivata: 'Riattivata', registrata: 'Registrata' }[m.tipo] || m.tipo;
   return `<div class="ev"><span class="ev-i">${ICONE[m.tipo] || '🆕'}</span><span>${t}</span><span class="mut">${fData(m.creato_il)}</span></div>`;
 }
@@ -1235,8 +1250,8 @@ $('m-list').onclick = e => { const it = e.target.closest('.item'); if (it) { sho
 // ---------- stampanti: quale bobina è montata in quale posto (usa il campo "posizione") ----------
 // i nomi dei posti sono quelli che legge il programma "aggiorna bobine" sul Mac: non cambiarli
 const MACCHINE = [
-  { nome: 'P2S', sotto: 'Artemis', ams: [['P2S 1', '1'], ['P2S 2', '2'], ['P2S 3', '3'], ['P2S 4', '4']], esterna: ['P2S esterna', 'Esterna'] },
-  { nome: 'A1 mini', sotto: 'Optimus', ams: [], esterna: ['A1 mini', 'Bobina'] },
+  { nome: 'P2S', modello: 'P2S', sotto: 'Artemis', ams: [['P2S 1', '1'], ['P2S 2', '2'], ['P2S 3', '3'], ['P2S 4', '4']], esterna: ['P2S esterna', 'Esterna'] },
+  { nome: 'A1 mini', modello: 'A1 mini', sotto: 'Optimus', ams: [], esterna: ['A1 mini', 'Bobina'] },
 ];
 const TUTTI_POSTI = MACCHINE.flatMap(m => [...m.ams, m.esterna]);
 const normPos = p => String(p || '').trim().toLowerCase().replace(/\s+/g, ' ');
@@ -1245,9 +1260,9 @@ const nomePosto = p => { const m = MACCHINE.find(m => [...m.ams, m.esterna].some
   return m.ams.some(([x]) => x === p) ? `${m.nome} · posto ${e[1]}` : m.ams.length ? `${m.nome} · bobina esterna` : m.nome; };
 let ST = [];
 async function loadStampanti() {
-  const { data, error } = await db.from('bobine').select('id,materiale,colore,finitura,marca,posizione,peso_iniziale,peso_rimasto').eq('stato', 'attiva').order('materiale').order('colore').order('id');
+  const { data, error } = await db.from('bobine').select('id,materiale,colore,finitura,marca,posizione,peso_iniziale,peso_rimasto,creata_il').eq('stato', 'attiva').order('materiale').order('colore').order('id');
   if (error) return msg('Errore: ' + esc(error.message), false);
-  ST = data; drawStampanti();
+  ST = data; drawStampanti(); return true;
 }
 // bobine con scritto solo il nome della stampante (es. "P2S") ma non il posto
 const senzaPosto = m => m.ams.length ? ST.filter(b => normPos(b.posizione) === normPos(m.nome)) : [];
@@ -1338,6 +1353,91 @@ async function salvaPosti(posto, ora, nuova, dove) {
   const tolte = ora.map(b => b.id).join(', ');
   msg([nuova && `${nuova.id} montata su ${esc(nomePosto(posto))}.`, tolte && `${tolte} ${dove ? 'spostata in ' + esc(dove) : 'tolta'}.`].filter(Boolean).join(' '));
 }
+
+// ---------- ⚖️ aggiorna grammi: legge le stampe dal cloud Bambu (ponte Supabase "bambu-stampe") ----------
+// Per ogni bobina contano solo le stampe iniziate DOPO l'ultima volta che ne hai scritto i grammi a mano
+// (o dopo la registrazione). Ogni stampa scalata o saltata viene ricordata e non si ripropone.
+let GR = [];
+const oraIt = d => new Date(d).toLocaleString('it-IT', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+function postoDaRiga(t, r) {
+  const m = MACCHINE.find(m => m.modello === t.modello); if (!m) return null;
+  if (!m.ams.length || r.ams >= 254) return m.esterna[0];
+  return m.ams[r.slot]?.[0] || null;
+}
+$('gr-chiudi').onclick = () => $('grammi-f').classList.add('hidden');
+$('st-grammi').onclick = async () => {
+  $('gr-corpo').innerHTML = '<div class="mut" style="margin-top:12px">⏳ Leggo le stampe dal cloud Bambu…</div>';
+  $('grammi-f').classList.remove('hidden');
+  const fail = t => { $('gr-corpo').innerHTML = `<div class="msg err" style="margin-top:12px">${t}</div>`; };
+  const [{ data, error }, ok] = await Promise.all([db.functions.invoke('bambu-stampe'), loadStampanti()]);
+  if (error || !data) return fail('Non riesco a leggere le stampe: ' + esc(error?.message || 'nessuna risposta') + '.');
+  if (data.errore) return fail(data.errore === 'accesso_scaduto' || data.errore === 'accesso_mancante'
+    ? 'L\'accesso al tuo account Bambu è scaduto. Sul Mac scrivi a Claude: <b>"rifai l\'accesso Bambu"</b>.'
+    : 'Il cloud Bambu ha risposto con un errore (' + esc(data.errore) + '). Riprova più tardi.');
+  if (!ok) return;
+  const ids = data.stampe.map(t => t.id);
+  const [{ data: fatte }, { data: mov }] = await Promise.all([
+    db.from('stampe_scalate').select('task_id').in('task_id', ids.length ? ids : [0]),
+    db.from('movimenti').select('bobina_id,creato_il').in('tipo', ['peso', 'riattivata']).in('bobina_id', ST.map(b => b.id)),
+  ]);
+  const giaFatte = new Set((fatte || []).map(f => Number(f.task_id)));
+  // da quando contano le stampe per ogni bobina
+  const dal = {};
+  for (const b of ST) dal[b.id] = b.creata_il;
+  for (const m of mov || []) if (m.creato_il > dal[m.bobina_id]) dal[m.bobina_id] = m.creato_il;
+  const inCorso = [];
+  GR = [];
+  for (const t of data.stampe.slice().reverse()) {          // dalla più vecchia alla più nuova
+    if (giaFatte.has(Number(t.id))) continue;
+    if (t.stato === 4 || t.stato === 1) { inCorso.push(t); continue; }
+    const righe = t.righe.filter(r => r.g > 0).map(r => {
+      const posto = postoDaRiga(t, r), b = posto ? montate(posto)[0] : null;
+      const vecchia = b && new Date(t.inizio) < new Date(dal[b.id]);
+      return { ...r, posto, bobina: vecchia ? '' : (b?.id || ''), vecchia, g: Math.round(r.g * 10) / 10 };
+    });
+    if (!righe.length || righe.every(r => r.vecchia)) continue;   // già compresa nei grammi inseriti
+    GR.push({ ...t, righe });
+  }
+  drawGrammi(inCorso);
+};
+function drawGrammi(inCorso = []) {
+  const opzioni = sel => `<option value="">— nessuna (non scalare) —</option>` + ST.map(b =>
+    `<option value="${b.id}" ${b.id === sel ? 'selected' : ''}>${b.id} ${esc(b.materiale)} ${esc(b.colore)}${b.posizione ? ' · ' + esc(b.posizione) : ''}</option>`).join('');
+  const conta = {};
+  $('gr-corpo').innerHTML = (GR.length ? GR.map((t, i) => {
+    const posti = t.righe.map(r => r.posto), doppi = posti.some((p, j) => p && posti.indexOf(p) !== j);
+    return `<div class="st-c" data-i="${i}">
+      <b>${esc(t.titolo || 'Stampa')}</b>
+      <div class="mut">${esc(t.stampante)} · ${oraIt(t.inizio)} · ${t.peso} g previsti</div>
+      ${t.stato !== 2 ? '<div class="avv">⚠️ Stampa non finita (fallita o annullata): i grammi sono quelli previsti, correggili.</div>' : ''}
+      ${t.saltati ? `<div class="avv">⚠️ Hai saltato ${t.saltati} oggetti: il filamento usato davvero è meno.</div>` : ''}
+      ${doppi ? '<div class="avv">⚠️ Bambu indica lo stesso posto per colori diversi (succede con le ristampe dall\'app): controlla le bobine.</div>' : ''}
+      ${t.righe.map((r, j) => `<div class="st-r">
+        <div class="dove"><i class="pallino" style="background:#${esc(String(r.colore || '888888').slice(0, 6))}"></i>${r.posto ? esc(r.posto) : 'posto sconosciuto'} · ${esc(r.tipo || '')}${r.vecchia ? ' · già compresa nei grammi che hai inserito' : ''}</div>
+        <select data-j="${j}" class="gr-b">${opzioni(r.bobina)}</select>
+        <input data-j="${j}" class="gr-g" type="number" inputmode="decimal" step="0.1" min="0" value="${r.g}">
+      </div>`).join('')}
+      <div class="st-b"><button class="pri gr-si">✅ Scala</button><button class="gr-no">✖️ Salta</button></div>
+    </div>`;
+  }).join('') : '<div class="msg ok" style="margin-top:12px">✅ Nessuna stampa nuova da scalare: i grammi sono già aggiornati.</div>')
+  + (inCorso.length ? `<div class="mut" style="margin-top:14px">⏳ In corso: ${inCorso.map(t => esc(t.titolo) + ' (' + esc(t.stampante) + ')').join(', ')}. La trovi qui quando è finita.</div>` : '')
+  + '<div class="mut" style="margin-top:14px;font-size:12px">I grammi sono quelli calcolati da Bambu Studio. La bobina viene scelta in base al posto in cui è montata adesso.</div>';
+}
+$('gr-corpo').onclick = async e => {
+  const c = e.target.closest('.st-c'); if (!c) return;
+  const si = e.target.closest('.gr-si'), no = e.target.closest('.gr-no'); if (!si && !no) return;
+  const t = GR[c.dataset.i];
+  const righe = [...c.querySelectorAll('.gr-b')].map(s => ({ id: s.value, g: Number(c.querySelector(`.gr-g[data-j="${s.dataset.j}"]`).value) || 0 }));
+  const vere = righe.filter(r => r.id && r.g > 0);
+  if (si && !vere.length) return msg('Scegli almeno una bobina con dei grammi, oppure tocca Salta.', false);
+  e.target.disabled = true;
+  const { error } = await db.rpc('scala_stampa', { p_task: t.id, p_stampante: t.stampante, p_titolo: t.titolo, p_inizio: t.inizio,
+    p_esito: si ? 'scalata' : 'saltata', p_righe: si ? vere : righe });
+  if (error) { e.target.disabled = false; return msg('Errore: ' + esc(error.message), false); }
+  GR.splice(c.dataset.i, 1);
+  await loadStampanti(); drawGrammi();
+  msg(si ? `Scalati: ${vere.map(r => `${r.id} −${Math.round(r.g)} g`).join(', ')}.` : `"${esc(t.titolo)}" saltata: non la ripropongo più.`);
+};
 
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => show(b.dataset.v));
 drawChips();
