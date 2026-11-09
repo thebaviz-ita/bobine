@@ -1249,6 +1249,8 @@ async function loadStampanti() {
   if (error) return msg('Errore: ' + esc(error.message), false);
   ST = data; drawStampanti();
 }
+// bobine con scritto solo il nome della stampante (es. "P2S") ma non il posto
+const senzaPosto = m => m.ams.length ? ST.filter(b => normPos(b.posizione) === normPos(m.nome)) : [];
 const montate = posto => ST.filter(b => normPos(b.posizione) === normPos(posto));
 function htmlPosto([posto, etichetta]) {
   const bb = montate(posto), b = bb[0];
@@ -1265,6 +1267,9 @@ function drawStampanti() {
     <div class="m-tit"><b>${esc(m.nome)}</b><span class="mut">${esc(m.sotto)}</span></div>
     ${m.ams.length ? `<div class="ams-l">AMS</div><div class="ams">${m.ams.map(htmlPosto).join('')}</div>
       <div class="esterne">${htmlPosto(m.esterna)}</div>` : `<div class="esterne" style="padding:0">${htmlPosto(m.esterna)}</div>`}
+    ${senzaPosto(m).length ? `<div style="margin-top:12px;padding:10px;border-radius:10px;background:#d2992233;font-size:13px">⚠️ Segnate solo "${esc(m.nome)}", senza il numero del posto:
+      ${senzaPosto(m).map(b => `<div style="margin-top:4px">${pallino(b.colore)}<b>${b.id}</b> ${esc(b.materiale)} ${esc(b.colore)}</div>`).join('')}
+      <div class="mut" style="margin-top:6px">Tocca il posto giusto qui sopra e sceglile: te le propongo per prime.</div></div>` : ''}
   </div>`).join('');
 }
 $('st-macchine').onclick = e => { const x = e.target.closest('[data-posto]'); if (x) apriPosto(x.dataset.posto); };
@@ -1285,7 +1290,9 @@ function apriPosto(posto) {
     <div id="po-lista"></div>`;
   const lista = () => {
     const t = $('po-cerca').value.trim().toLowerCase();
-    const cand = ST.filter(b => !ora.includes(b) && (!t || [b.id, b.colore, b.materiale, b.marca, b.posizione].some(v => String(v || '').toLowerCase().includes(t))));
+    const m = MACCHINE.find(m => [...m.ams, m.esterna].some(([x]) => x === posto)), prime = senzaPosto(m);
+    const cand = ST.filter(b => !ora.includes(b) && (!t || [b.id, b.colore, b.materiale, b.marca, b.posizione].some(v => String(v || '').toLowerCase().includes(t))))
+      .sort((x, y) => prime.includes(y) - prime.includes(x));
     $('po-lista').innerHTML = cand.map(b => { const pp = postoDi(b);
       return `<button class="scelta" data-id="${b.id}">${rigaBobina(b)}<span class="mut">${pp ? '🖨️ ' + esc(pp[0]) : b.posizione ? '📍 ' + esc(b.posizione) : ''} · ${b.peso_rimasto} g</span></button>`; }).join('')
       || '<div class="mut" style="margin-top:8px">Nessuna bobina trovata.</div>';
