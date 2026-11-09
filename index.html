@@ -108,6 +108,32 @@
   #n-canvas { width:100%; border-radius:12px; margin-top:10px; display:block; touch-action:manipulation; }
   .pallino { display:inline-block; width:12px; height:12px; border-radius:50%; border:1px solid #8888; margin-right:8px; vertical-align:-1px; }
   header .azioni { display:flex; gap:8px; }
+  /* stampanti: quale bobina è montata in quale posto */
+  .macchina { background:linear-gradient(160deg, #2a2f36, #15181c); color:#e6edf3; border:0; }
+  .macchina .mut { color:#9aa4ae; }
+  .m-tit { display:flex; align-items:baseline; gap:8px; margin-bottom:12px; }
+  .m-tit b { font-family:'Orbitron', monospace; font-size:20px; letter-spacing:.04em; }
+  .ams { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:8px; background:#0b0d10; border-radius:12px; padding:8px; border:1px solid #333a42; }
+  .ams-l { font-size:11px; letter-spacing:.15em; color:#9aa4ae; margin:0 0 6px 4px; }
+  .posto { display:flex; flex-direction:column; align-items:center; gap:3px; min-width:0; padding:10px 4px; border-radius:10px;
+    background:#1c2127; border:1px solid #39414a; color:#e6edf3; font-size:12px; text-align:center; line-height:1.25; }
+  .posto:active { transform:scale(.97); }
+  .posto > span { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .posto .n { font-family:'Orbitron', monospace; font-size:11px; color:#9aa4ae; }
+  .posto .bar { width:80%; height:6px; margin:3px 0 0; background:#39414a; }
+  .rocc { width:52px; height:52px; border-radius:50%; position:relative; margin:4px 0; box-shadow:inset 0 0 0 3px #0005, 0 2px 6px #0008; }
+  .rocc::after { content:''; position:absolute; inset:34%; border-radius:50%; background:#2a2f36; box-shadow:0 0 0 3px #555d66; }
+  .posto.vuoto { border-style:dashed; background:transparent; color:#9aa4ae; }
+  .posto.vuoto .rocc { background:transparent; box-shadow:inset 0 0 0 2px #555d66; }
+  .posto.vuoto .rocc::after { content:'+'; inset:0; background:none; box-shadow:none; display:grid; place-items:center; font-size:22px; color:#9aa4ae; }
+  .posto .doppio { color:#ffb340; font-weight:700; }
+  .esterne { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:8px; margin-top:10px; padding:0 8px; }
+  #posto-f { position:fixed; inset:0; z-index:60; background:#0008; display:flex; align-items:flex-end; justify-content:center; padding:16px; padding-bottom:calc(16px + env(safe-area-inset-bottom)); }
+  #posto-f > .card { width:100%; max-width:528px; margin:0; animation:sali .2s; max-height:85vh; overflow-y:auto; }
+  .scelta { display:flex; align-items:center; gap:8px; width:100%; text-align:left; padding:10px 12px; margin-top:6px; font-size:14px; }
+  .scelta > span { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .scelta .mut { flex:none; font-size:12px; }
+  .ora { display:flex; align-items:center; gap:12px; background:var(--bg); border-radius:12px; padding:12px; margin-top:10px; }
   .hidden { display:none !important; }
 </style>
 </head>
@@ -258,6 +284,12 @@
     <div class="card" id="q-risultato"></div>
   </section>
 
+  <!-- STAMPANTI: quale bobina è montata dove -->
+  <section id="v-stamp" class="hidden">
+    <div class="mut" style="margin:0 4px 10px">Tocca un posto per montare, cambiare o togliere una bobina.</div>
+    <div id="st-macchine"></div>
+  </section>
+
   <!-- IMPOSTAZIONI -->
   <section id="v-imp" class="hidden">
     <div class="card">
@@ -296,10 +328,15 @@
   <button class="pri" id="dopo-si">➕ Sì, una nuova</button>
   <button id="dopo-no">📦 No, vai al magazzino</button>
 </div></div>
+<div id="posto-f" class="hidden"><div class="card">
+  <div class="row"><b style="font-size:18px" id="po-tit"></b><button id="po-chiudi" style="margin-left:auto;padding:6px 12px">✕</button></div>
+  <div id="po-corpo"></div>
+</div></div>
 <nav id="nav" class="hidden">
   <button data-v="nuove"><span>➕</span>Nuove</button>
   <button data-v="scan"><span>📷</span>Scansiona</button>
   <button data-v="mag"><span>📦</span>Magazzino</button>
+  <button data-v="stamp"><span>🖨️</span>Stampanti</button>
   <button data-v="prezzi"><span>💶</span>Prezzi</button>
   <button data-v="prev"><span>🧮</span>Preventivo</button>
 </nav>
@@ -401,10 +438,11 @@ $('avviso').onclick = () => { clearTimeout(timerAvviso); $('avviso').classList.r
 
 function show(v) {
   msg('');
-  for (const s of ['login', 'nuove', 'scan', 'mag', 'prezzi', 'prev', 'imp']) $('v-' + s).classList.toggle('hidden', s !== v);
+  for (const s of ['login', 'nuove', 'scan', 'mag', 'stamp', 'prezzi', 'prev', 'imp']) $('v-' + s).classList.toggle('hidden', s !== v);
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
   if (v === 'scan') startScan(); else stopScan();
   if (v === 'mag') loadMag();
+  if (v === 'stamp') loadStampanti();
   if (v === 'nuove') loadSuggest();
   if (v === 'imp') drawImp();
   if (v === 'prezzi') loadPrezzi();
@@ -1193,6 +1231,106 @@ function drawMag() {
       </details>`).join('')}`).join('') : `<div class="mut">${filtrato ? 'Nessuna bobina con questi filtri.' : 'Nessuna bobina.'}</div>`;
 }
 $('m-list').onclick = e => { const it = e.target.closest('.item'); if (it) { show('scan'); stopScan(); openSpool(it.dataset.id); } };
+
+// ---------- stampanti: quale bobina è montata in quale posto (usa il campo "posizione") ----------
+// i nomi dei posti sono quelli che legge il programma "aggiorna bobine" sul Mac: non cambiarli
+const MACCHINE = [
+  { nome: 'P2S', sotto: 'Artemis', ams: [['P2S 1', '1'], ['P2S 2', '2'], ['P2S 3', '3'], ['P2S 4', '4']], esterna: ['P2S esterna', 'Esterna'] },
+  { nome: 'A1 mini', sotto: 'Optimus', ams: [], esterna: ['A1 mini', 'Bobina'] },
+];
+const TUTTI_POSTI = MACCHINE.flatMap(m => [...m.ams, m.esterna]);
+const normPos = p => String(p || '').trim().toLowerCase().replace(/\s+/g, ' ');
+const postoDi = b => TUTTI_POSTI.find(([p]) => normPos(p) === normPos(b.posizione));
+const nomePosto = p => { const m = MACCHINE.find(m => [...m.ams, m.esterna].some(([x]) => x === p)); const e = TUTTI_POSTI.find(([x]) => x === p);
+  return m.ams.some(([x]) => x === p) ? `${m.nome} · posto ${e[1]}` : m.ams.length ? `${m.nome} · bobina esterna` : m.nome; };
+let ST = [];
+async function loadStampanti() {
+  const { data, error } = await db.from('bobine').select('id,materiale,colore,finitura,marca,posizione,peso_iniziale,peso_rimasto').eq('stato', 'attiva').order('materiale').order('colore').order('id');
+  if (error) return msg('Errore: ' + esc(error.message), false);
+  ST = data; drawStampanti();
+}
+const montate = posto => ST.filter(b => normPos(b.posizione) === normPos(posto));
+function htmlPosto([posto, etichetta]) {
+  const bb = montate(posto), b = bb[0];
+  if (!b) return `<button class="posto vuoto" data-posto="${esc(posto)}"><span class="n">${esc(etichetta)}</span><div class="rocc"></div><span>vuoto</span></button>`;
+  const h = coloreDaNome(b.colore), pct = Math.round(100 * b.peso_rimasto / (b.peso_iniziale || 1000));
+  return `<button class="posto" data-posto="${esc(posto)}"><span class="n">${esc(etichetta)}</span>
+    <div class="rocc" style="${h ? tinta(h) : 'background:#555d66'}"></div>
+    <span><b>${esc(b.colore)}</b></span><span class="mut">${esc(b.materiale)} · ${b.id}</span>
+    <div class="bar"><div style="width:${pct}%;background:${coloreBarra(pct)}"></div></div><span class="mut">${b.peso_rimasto} g</span>
+    ${bb.length > 1 ? `<span class="doppio">⚠️ ${bb.length} bobine</span>` : ''}</button>`;
+}
+function drawStampanti() {
+  $('st-macchine').innerHTML = MACCHINE.map(m => `<div class="card macchina">
+    <div class="m-tit"><b>${esc(m.nome)}</b><span class="mut">${esc(m.sotto)}</span></div>
+    ${m.ams.length ? `<div class="ams-l">AMS</div><div class="ams">${m.ams.map(htmlPosto).join('')}</div>
+      <div class="esterne">${htmlPosto(m.esterna)}</div>` : `<div class="esterne" style="padding:0">${htmlPosto(m.esterna)}</div>`}
+  </div>`).join('');
+}
+$('st-macchine').onclick = e => { const x = e.target.closest('[data-posto]'); if (x) apriPosto(x.dataset.posto); };
+$('po-chiudi').onclick = () => $('posto-f').classList.add('hidden');
+$('posto-f').onclick = e => { if (e.target.id === 'posto-f') $('posto-f').classList.add('hidden'); };
+const rigaBobina = b => `${pallino(b.colore)}<span><b>${b.id}</b> ${esc(b.materiale)} ${esc(b.colore)}${b.marca ? ' · ' + esc(b.marca) : ''}</span>`;
+
+// passo 1: cosa c'è montato + elenco delle bobine da montare
+function apriPosto(posto) {
+  const ora = montate(posto);
+  $('po-tit').textContent = '🖨️ ' + nomePosto(posto);
+  $('po-corpo').innerHTML = `
+    ${ora.map(b => `<div class="ora">${pallino(b.colore, 28)}<div style="flex:1;min-width:0"><b>${b.id}</b> · ${esc(b.materiale)} ${esc(b.colore)}<div class="mut">${b.marca ? esc(b.marca) + ' · ' : ''}${b.peso_rimasto} g rimasti</div></div></div>`).join('')}
+    ${ora.length > 1 ? '<div class="mut" style="color:var(--bad);margin-top:6px">⚠️ Qui risultano più bobine: togline una o montane un\'altra al loro posto.</div>' : ''}
+    ${ora.length ? '<button id="po-togli" style="width:100%;margin-top:10px">⬆️ Togli dalla stampante</button>' : ''}
+    <div style="font-weight:600;margin-top:16px">${ora.length ? 'Oppure monta un\'altra bobina:' : 'Quale bobina monti qui?'}</div>
+    <input id="po-cerca" type="search" placeholder="🔍 Cerca (codice, colore, marca…)" autocomplete="off" style="margin-top:8px">
+    <div id="po-lista"></div>`;
+  const lista = () => {
+    const t = $('po-cerca').value.trim().toLowerCase();
+    const cand = ST.filter(b => !ora.includes(b) && (!t || [b.id, b.colore, b.materiale, b.marca, b.posizione].some(v => String(v || '').toLowerCase().includes(t))));
+    $('po-lista').innerHTML = cand.map(b => { const pp = postoDi(b);
+      return `<button class="scelta" data-id="${b.id}">${rigaBobina(b)}<span class="mut">${pp ? '🖨️ ' + esc(pp[0]) : b.posizione ? '📍 ' + esc(b.posizione) : ''} · ${b.peso_rimasto} g</span></button>`; }).join('')
+      || '<div class="mut" style="margin-top:8px">Nessuna bobina trovata.</div>';
+  };
+  $('po-cerca').oninput = lista; lista();
+  $('po-lista').onclick = e => { const x = e.target.closest('[data-id]'); if (!x) return;
+    const nuova = ST.find(b => b.id === x.dataset.id);
+    ora.length ? doveMetti(posto, ora, nuova) : salvaPosti(posto, ora, nuova, null); };
+  if ($('po-togli')) $('po-togli').onclick = () => doveMetti(posto, ora, null);
+  $('posto-f').classList.remove('hidden');
+}
+
+// passo 2: dove va la bobina che si toglie dalla stampante
+function doveMetti(posto, ora, nuova) {
+  const prima = nuova?.posizione?.trim();   // dove stava quella nuova: la tolta di solito va lì (scambio)
+  const altre = distinti(ST.filter(b => !postoDi(b)), 'posizione');
+  const scelte = [...new Set([prima, ...altre].filter(Boolean))];
+  $('po-corpo').innerHTML = `
+    ${nuova ? `<div class="ora">${pallino(nuova.colore, 28)}<div><div class="mut">Monti</div><b>${nuova.id}</b> · ${esc(nuova.materiale)} ${esc(nuova.colore)}</div></div>` : ''}
+    <div style="font-weight:600;margin-top:16px">Dove metti ${ora.map(b => `<b>${b.id}</b> (${esc(b.colore)})`).join(' e ')} che togli?</div>
+    <div class="sug" id="po-dove" style="margin-top:10px">${scelte.map(p => `<button type="button" data-p="${esc(p)}" ${p === prima ? 'class="chip on"' : ''}>${postoDi({ posizione: p }) ? '🖨️ ' : '📍 '}${esc(p)}${p === prima ? ' (scambio)' : ''}</button>`).join('')}</div>
+    <div class="row" style="margin-top:10px"><input id="po-altro" placeholder="✏️ oppure scrivi dove (es. Scaffale A)" autocomplete="off"><button id="po-altro-ok">OK</button></div>
+    <button id="po-nessuna" style="width:100%;margin-top:10px">Nessuna posizione</button>
+    <button id="po-indietro" style="width:100%;margin-top:8px;border:0;background:none;color:var(--pri)">‹ Indietro</button>`;
+  $('po-dove').onclick = e => { const x = e.target.closest('[data-p]'); if (x) salvaPosti(posto, ora, nuova, x.dataset.p); };
+  $('po-altro-ok').onclick = () => { const v = $('po-altro').value.trim(); if (!v) return msg('Scrivi dove la metti.', false, 'po-altro'); salvaPosti(posto, ora, nuova, v); };
+  $('po-nessuna').onclick = () => salvaPosti(posto, ora, nuova, null);
+  $('po-indietro').onclick = () => apriPosto(posto);
+}
+
+async function salvaPosti(posto, ora, nuova, dove) {
+  for (const b of ora) {
+    const { error } = await db.from('bobine').update({ posizione: dove }).eq('id', b.id);
+    if (error) return msg('Errore: ' + esc(error.message), false);
+  }
+  if (nuova) {
+    const { error } = await db.from('bobine').update({ posizione: posto }).eq('id', nuova.id);
+    if (error) return msg('Errore: ' + esc(error.message), false);
+  }
+  $('posto-f').classList.add('hidden');
+  SUG.caricati = false;
+  await loadStampanti();
+  const tolte = ora.map(b => b.id).join(', ');
+  msg([nuova && `${nuova.id} montata su ${esc(nomePosto(posto))}.`, tolte && `${tolte} ${dove ? 'spostata in ' + esc(dove) : 'tolta'}.`].filter(Boolean).join(' '));
+}
 
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => show(b.dataset.v));
 drawChips();
