@@ -1394,10 +1394,15 @@ $('st-grammi').onclick = async () => {
   if (!ok) return;
   const ids = data.stampe.map(t => t.id);
   const [{ data: fatte }, { data: mov }] = await Promise.all([
-    db.from('stampe_scalate').select('task_id').in('task_id', ids.length ? ids : [0]),
+    db.from('stampe_scalate').select('task_id,stampante,inizio').order('inizio', { ascending: false }).limit(2000),
     db.from('movimenti').select('bobina_id,creato_il').in('tipo', ['peso', 'riattivata']).in('bobina_id', ST.map(b => b.id)),
   ]);
   const giaFatte = new Set((fatte || []).map(f => Number(f.task_id)));
+  // per ogni stampante: le stampe iniziate prima dell'ultima che hai già scalato o saltato sono sistemate
+  const sistemateFino = {};
+  for (const f of fatte || []) if (!sistemateFino[f.stampante] || f.inizio > sistemateFino[f.stampante]) sistemateFino[f.stampante] = f.inizio;
+  // e niente stampe di prima che registrassi le bobine
+  const inizioInventario = ST.reduce((a, b) => !a || b.creata_il < a ? b.creata_il : a, null);
   // da quando contano le stampe per ogni bobina
   const dal = {};
   for (const b of ST) dal[b.id] = b.creata_il;
@@ -1406,6 +1411,9 @@ $('st-grammi').onclick = async () => {
   GR = [];
   for (const t of data.stampe.slice().reverse()) {          // dalla più vecchia alla più nuova
     if (giaFatte.has(Number(t.id))) continue;
+    const quando = new Date(t.inizio);
+    if (sistemateFino[t.stampante] && quando <= new Date(sistemateFino[t.stampante])) continue;
+    if (inizioInventario && quando < new Date(inizioInventario)) continue;
     if (t.stato === 4 || t.stato === 1) { inCorso.push(t); continue; }
     const righe = t.righe.filter(r => r.g > 0).map(r => {
       const posto = postoDaRiga(t, r), b = posto ? montate(posto)[0] : null;
@@ -1439,7 +1447,7 @@ function drawGrammi(inCorso = []) {
     </div>`;
   }).join('') : '<div class="msg ok" style="margin-top:12px">✅ Nessuna stampa nuova da scalare: i grammi sono già aggiornati.</div>')
   + (inCorso.length ? `<div class="mut" style="margin-top:14px">⏳ In corso: ${inCorso.map(t => esc(t.titolo) + ' (' + esc(t.stampante) + ')').join(', ')}. La trovi qui quando è finita.</div>` : '')
-  + '<div class="mut" style="margin-top:14px;font-size:12px">I grammi sono quelli calcolati da Bambu Studio. La bobina viene scelta in base al posto in cui è montata adesso.</div>';
+  + '<div class="mut" style="margin-top:14px;font-size:12px">I grammi sono quelli calcolati da Bambu Studio. La bobina viene scelta in base al posto in cui è montata adesso. Per ogni stampante vedi solo le stampe dopo l\'ultima che hai scalato o saltato.</div>';
 }
 $('gr-corpo').onclick = async e => {
   const c = e.target.closest('.st-c'); if (!c) return;
